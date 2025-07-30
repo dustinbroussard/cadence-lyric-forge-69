@@ -1,26 +1,24 @@
-const CACHE_NAME = 'cadence-codex-v6';
+
+const CACHE_NAME = 'cadence-codex-v7';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
   '/icon-192.png',
-  '/icon-512.png',
-  '/src/main.tsx',
-  '/src/App.tsx',
-  '/src/index.css'
+  '/icon-512.png'
 ];
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
-  console.log('Service Worker: Installing');
+  console.log('Service Worker: Installing v7');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Service Worker: Caching files');
-        return cache.addAll(urlsToCache);
+        return cache.addAll(urlsToCache.map(url => new Request(url, { cache: 'reload' })));
       })
       .then(() => {
-        console.log('Service Worker: Installed');
+        console.log('Service Worker: Installed successfully');
         return self.skipWaiting();
       })
       .catch((error) => {
@@ -31,7 +29,7 @@ self.addEventListener('install', (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker: Activating');
+  console.log('Service Worker: Activating v7');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -43,7 +41,7 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(() => {
-      console.log('Service Worker: Activated');
+      console.log('Service Worker: Activated successfully');
       return self.clients.claim();
     })
   );
@@ -51,20 +49,18 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
+  // Skip non-GET requests and external requests
+  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
   event.respondWith(
     caches.match(event.request)
       .then((cachedResponse) => {
-        // Return cached version if available
         if (cachedResponse) {
           return cachedResponse;
         }
 
-        // Otherwise fetch from network
         return fetch(event.request)
           .then((response) => {
             // Don't cache if not a valid response
@@ -90,14 +86,4 @@ self.addEventListener('fetch', (event) => {
         }
       })
   );
-});
-
-// Handle background sync (for future features)
-self.addEventListener('sync', (event) => {
-  console.log('Service Worker: Background sync', event.tag);
-});
-
-// Handle push notifications (for future features)
-self.addEventListener('push', (event) => {
-  console.log('Service Worker: Push received', event);
 });

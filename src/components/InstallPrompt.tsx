@@ -30,14 +30,17 @@ export const InstallPrompt: React.FC = () => {
       return;
     }
 
-    // Check if dismissed recently (reduced from 1 hour to 10 minutes for testing)
+    // Check if dismissed recently (reduced to 5 minutes for aggressive prompting)
     const dismissed = localStorage.getItem('pwa-install-dismissed');
     if (dismissed) {
       const dismissedTime = parseInt(dismissed);
-      const tenMinutes = 10 * 60 * 1000;
-      if (Date.now() - dismissedTime < tenMinutes) {
+      const fiveMinutes = 5 * 60 * 1000;
+      if (Date.now() - dismissedTime < fiveMinutes) {
         console.log('Install prompt recently dismissed');
         return;
+      } else {
+        // Clear old dismissal
+        localStorage.removeItem('pwa-install-dismissed');
       }
     }
 
@@ -47,11 +50,11 @@ export const InstallPrompt: React.FC = () => {
       const installEvent = e as BeforeInstallPromptEvent;
       setDeferredPrompt(installEvent);
       
-      // Show prompt after shorter delay for testing
+      // Show prompt immediately
       setTimeout(() => {
         console.log('Showing install prompt');
         setShowPrompt(true);
-      }, 2000);
+      }, 1000);
     };
 
     const handleAppInstalled = () => {
@@ -64,35 +67,40 @@ export const InstallPrompt: React.FC = () => {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // More aggressive fallback for browsers that don't fire beforeinstallprompt
+    // Very aggressive fallback - show install option even without the event
     const fallbackTimer = setTimeout(() => {
-      if (!deferredPrompt && !localStorage.getItem('pwa-install-dismissed')) {
+      if (!localStorage.getItem('pwa-install-dismissed')) {
         console.log('Showing fallback install prompt');
         setShowPrompt(true);
       }
-    }, 5000);
+    }, 3000);
+
+    // Log for debugging
+    console.log('InstallPrompt: Setup complete, waiting for beforeinstallprompt event');
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
       clearTimeout(fallbackTimer);
     };
-  }, [deferredPrompt]);
+  }, []);
 
   const handleInstall = async () => {
     console.log('Install button clicked');
     
     if (deferredPrompt) {
       try {
-        console.log('Triggering install prompt');
+        console.log('Triggering native install prompt');
         await deferredPrompt.prompt();
         const { outcome } = await deferredPrompt.userChoice;
         console.log('Install prompt result:', outcome);
         
-        if (outcome === 'dismissed') {
-          handleDismiss();
-        } else {
+        if (outcome === 'accepted') {
+          console.log('User accepted the install');
           setShowPrompt(false);
+        } else {
+          console.log('User dismissed the install');
+          handleDismiss();
         }
         setDeferredPrompt(null);
       } catch (error) {
@@ -100,34 +108,38 @@ export const InstallPrompt: React.FC = () => {
         showManualInstructions();
       }
     } else {
-      console.log('No deferred prompt, showing manual instructions');
+      console.log('No deferred prompt available, showing manual instructions');
       showManualInstructions();
     }
   };
 
   const showManualInstructions = () => {
-    const isChrome = navigator.userAgent.includes('Chrome');
-    const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isAndroid = navigator.userAgent.includes('Android');
+    const userAgent = navigator.userAgent;
+    const isChrome = userAgent.includes('Chrome');
+    const isSafari = userAgent.includes('Safari') && !userAgent.includes('Chrome');
+    const isFirefox = userAgent.includes('Firefox');
+    const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+    const isAndroid = userAgent.includes('Android');
     
-    let message = 'To install Cadence Codex as a PWA:\n\n';
+    let message = 'To install Cadence Codex as a PWA app:\n\n';
     
     if (isIOS && isSafari) {
-      message += '1. Tap the Share button (⬆️)\n2. Scroll down and select "Add to Home Screen"\n3. Tap "Add" to install';
+      message += '1. Tap the Share button (⬆️) at the bottom\n2. Scroll down and select "Add to Home Screen"\n3. Tap "Add" to install the app';
     } else if (isAndroid && isChrome) {
-      message += '1. Tap the menu (⋮) in the top right\n2. Select "Add to Home screen"\n3. Tap "Add" to install';
+      message += '1. Tap the menu (⋮) in the top right corner\n2. Select "Add to Home screen" or "Install app"\n3. Tap "Add" to install';
     } else if (isChrome) {
-      message += '1. Look for the install icon (⬇️) in the address bar\n2. Or click the menu (⋮) and select "Install Cadence Codex"';
+      message += '1. Look for the install icon (⬇️) in the address bar\n2. Or click the menu (⋮) and select "Install Cadence Codex"\n3. Click "Install" to add the app';
+    } else if (isFirefox) {
+      message += '1. Look for the home icon (+) in the address bar\n2. Or go to Menu > Install this site as an app\n3. Click "Install" to add the app';
     } else {
-      message += 'Look for "Add to Home screen" or "Install" in your browser menu.';
+      message += 'Look for "Add to Home screen", "Install app", or similar option in your browser menu.\n\nThis works best in Chrome, Edge, or Safari browsers.';
     }
     
     alert(message);
   };
 
   const handleDismiss = () => {
-    console.log('Install prompt dismissed');
+    console.log('Install prompt dismissed by user');
     setShowPrompt(false);
     localStorage.setItem('pwa-install-dismissed', Date.now().toString());
   };
@@ -146,7 +158,7 @@ export const InstallPrompt: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold text-base">Install Cadence Codex</h3>
-              <p className="text-sm opacity-80 leading-tight">Install as a full PWA app</p>
+              <p className="text-sm opacity-80 leading-tight">Get the full app experience</p>
             </div>
           </div>
           <button
@@ -159,9 +171,9 @@ export const InstallPrompt: React.FC = () => {
         
         <div className="space-y-2">
           <div className="flex text-xs opacity-70 space-x-4">
-            <span>✓ Full PWA</span>
-            <span>✓ Offline ready</span>
-            <span>✓ App-like experience</span>
+            <span>✓ Works offline</span>
+            <span>✓ Full app experience</span>
+            <span>✓ Home screen access</span>
           </div>
           
           <div className="flex space-x-2">
@@ -170,7 +182,7 @@ export const InstallPrompt: React.FC = () => {
               className="flex-1 px-4 py-2.5 lyric-accent-bg text-white rounded-xl hover:opacity-90 transition-all duration-300 flex items-center justify-center space-x-2 font-semibold shadow-lg"
             >
               <Download size={16} />
-              <span>Install PWA</span>
+              <span>Install App</span>
             </button>
             <button
               onClick={handleDismiss}

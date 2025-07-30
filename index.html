@@ -18,7 +18,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     
     <!-- Icons -->
-    <link rel="icon" href="/icon-192.png" type="image/png" />
+    <link rel="icon" href="/icon-192.png" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
@@ -40,7 +40,7 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     
-    <!-- Service Worker Registration -->
+    <!-- Single Service Worker Registration -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', async () => {
@@ -59,7 +59,8 @@
                 console.log('New service worker installing');
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    console.log('New content available');
+                    console.log('New content available, reloading...');
+                    window.location.reload();
                   }
                 });
               }
@@ -69,6 +70,8 @@
             console.error('SW registration failed:', error);
           }
         });
+      } else {
+        console.log('Service workers not supported');
       }
     </script>
   </body>
