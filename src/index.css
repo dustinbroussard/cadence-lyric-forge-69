@@ -1,0 +1,171 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Color Scheme */
+:root {
+  --color-bg:        #0D0004;   /* off-black */
+  --color-surface:   #1A0C0E;   /* charcoal */
+  --color-card:      #5E0010;   /* deep red */
+  --color-accent:    #C1001F;   /* candy apple red */
+  --color-accent-hover: #E52E3B;
+  --color-accent-active: #7A0212;
+  --color-glow:      #FF475A;   /* neon pop */
+  --color-border:    #9E001C;
+  --color-text:      #FDFBFA;   /* near-white */
+  --color-text-muted:#B89A9F;
+  --color-subtle:    #F0DADA;   /* chrome glint */
+}
+
+[data-theme="dark"] {
+  --color-bg:        #0D0004;   /* off-black */
+  --color-surface:   #1A0C0E;   /* charcoal */
+  --color-card:      #5E0010;   /* deep red */
+  --color-accent:    #C1001F;   /* candy apple red */
+  --color-accent-hover: #E52E3B;
+  --color-accent-active: #7A0212;
+  --color-glow:      #FF475A;   /* neon pop */
+  --color-border:    #9E001C;
+  --color-text:      #FDFBFA;   /* near-white */
+  --color-text-muted:#B89A9F;
+  --color-subtle:    #F0DADA;   /* chrome glint */
+}
+
+[data-theme="light"] {
+  --color-bg:        #FDFBFA;   /* soft ivory white */
+  --color-surface:   #F0DADA;   /* rose-tinted chrome */
+  --color-card:      #FFD6D6;   /* soft blush red */
+  --color-accent:    #C1001F;   /* candy apple red */
+  --color-accent-hover: #9E001C;
+  --color-accent-active: #7A0212;
+  --color-glow:      #E52E3B;   /* radiant red */
+  --color-border:    #B89A9F;   /* smoky rose */
+  --color-text:      #0D0004;   /* deepest red-black */
+  --color-text-muted:#5E0010;   /* garnet */
+  --color-subtle:    #9E001C;   /* for icons/quiet accents */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  [data-theme="light"] html {
+    color-scheme: light;
+  }
+}
+
+@layer components {
+  .typewriter-font {
+    font-family: 'Courier New', Courier, monospace;
+  }
+
+  .lyric-surface {
+    background-color: var(--color-surface);
+  }
+
+  .lyric-bg-secondary {
+    background-color: var(--color-card);
+  }
+
+  .lyric-bg-primary {
+    background-color: var(--color-bg);
+  }
+
+  .lyric-border {
+    border-color: var(--color-border);
+  }
+
+  .lyric-text {
+    color: var(--color-text);
+  }
+
+  .lyric-accent {
+    color: var(--color-accent);
+  }
+
+  .lyric-accent-bg {
+    background-color: var(--color-accent);
+  }
+
+  .lyric-highlight {
+    @apply focus:ring-2;
+    --tw-ring-color: var(--color-glow);
+  }
+
+  .lyric-highlight-bg {
+    background-color: var(--color-card);
+  }
+
+  /* Override shadcn defaults with custom colors */
+  .bg-background {
+    background-color: var(--color-bg) !important;
+  }
+
+  .bg-card {
+    background-color: var(--color-card) !important;
+  }
+
+  .bg-primary {
+    background-color: var(--color-accent) !important;
+  }
+
+  .text-foreground {
+    color: var(--color-text) !important;
+  }
+
+  .text-muted-foreground {
+    color: var(--color-text-muted) !important;
+  }
+
+  .border {
+    border-color: var(--color-border) !important;
+  }
+
+  .bg-secondary {
+    background-color: var(--color-surface) !important;
+  }
+}
+
+/* PWA Install Prompt Animation */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s ease-out;
+}
+
+/* PWA specific enhancements */
+@media (display-mode: standalone) {
+  body {
+    /* Adjust for standalone app mode */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* iOS specific adjustments */
+@supports (-webkit-touch-callout: none) {
+  .ios-safe-area {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
