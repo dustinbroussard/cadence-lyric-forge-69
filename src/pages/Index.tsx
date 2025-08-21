@@ -9,6 +9,8 @@ import { MusicalSuggestionsModal } from '../components/MusicalSuggestionsModal';
 import { EnhancedPromptSetManager } from '../components/EnhancedPromptSetManager';
 import { PrepForSuno } from '../components/PrepForSuno';
 import { InstallPrompt } from '../components/InstallPrompt';
+import { LyricLibrary } from '../components/LyricLibrary';
+import { AdvancedLyricEditor } from '../components/AdvancedLyricEditor';
 
 // Add new imports for Clear Output and Model Slates
 import { ClearOutputDialog } from '../components/ClearOutputDialog';
@@ -82,7 +84,9 @@ const initialState = {
   // Add new state for enhanced features
   showClearOutputDialog: false,
   showModelSlatesManager: false,
-  interruptRequested: false
+  interruptRequested: false,
+  showLyricLibrary: false,
+  showAdvancedEditor: false
 };
 
 function appReducer(state, action) {
@@ -165,6 +169,15 @@ function appReducer(state, action) {
       const expandedSet = new Set(state.expandedStages);
       expandedSet.add(action.payload);
       return { ...state, expandedStages: expandedSet };
+    case 'TOGGLE_LYRIC_LIBRARY':
+      return { ...state, showLyricLibrary: !state.showLyricLibrary };
+    case 'TOGGLE_ADVANCED_EDITOR':
+      return { ...state, showAdvancedEditor: !state.showAdvancedEditor };
+    case 'UPDATE_STAGE_OUTPUT':
+      return {
+        ...state,
+        stageData: { ...state.stageData, [action.stage]: action.payload }
+      };
     default:
       return state;
   }
@@ -351,6 +364,7 @@ export default function CadenceCodex() {
     }
   };
 
+  // Enhanced processStage function with better output handling
   const processStage = async (stageIndex) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_INTERRUPT_REQUESTED', payload: false });
@@ -454,8 +468,8 @@ Your musical context is ready! These settings will influence the Flow stage to c
       dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: result });
       dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
       
-      // Start typewriter animation only for the final stage
-      if (stage.id === 'flow') {
+      // Start typewriter animation for all stages, not just flow
+      if (result && result.length > 50) {
         startTypewriterAnimation(result, stage.id);
       }
       
@@ -503,6 +517,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
     }
   };
 
+  // Enhanced typewriter animation with interrupt handling
   const startTypewriterAnimation = useCallback((text, stageId) => {
     if (animationRef.current) {
       clearInterval(animationRef.current);
@@ -520,6 +535,16 @@ Your musical context is ready! These settings will influence the Flow stage to c
     });
 
     animationRef.current = setInterval(() => {
+      // Check for interrupt
+      if (state.interruptRequested) {
+        clearInterval(animationRef.current);
+        dispatch({ 
+          type: 'SET_ANIMATION_STATE', 
+          payload: { isPlaying: false, currentChar: text.length }
+        });
+        return;
+      }
+
       if (currentChar < text.length) {
         currentChar++;
         dispatch({ 
@@ -540,8 +565,8 @@ Your musical context is ready! These settings will influence the Flow stage to c
           payload: { isPlaying: false }
         });
       }
-    }, Math.random() * 100 + 50);
-  }, [state.settings.soundEnabled, state.settings.hapticEnabled]);
+    }, Math.random() * 50 + 25); // Faster animation
+  }, [state.settings.soundEnabled, state.settings.hapticEnabled, state.interruptRequested]);
 
   const pauseAnimation = () => {
     if (animationRef.current) {
@@ -717,6 +742,34 @@ Return only the enhanced version, no explanations.`;
     });
   };
 
+  // New handlers for library and advanced editor
+  const handleLoadFromLibrary = (lyrics: string, title: string) => {
+    dispatch({ type: 'SET_USER_INPUT', payload: `Title: ${title}\n\n${lyrics}` });
+    dispatch({ type: 'TOGGLE_LYRIC_LIBRARY' });
+    toast({
+      title: "Loaded from Library",
+      description: `"${title}" has been loaded as your inspiration`,
+    });
+  };
+
+  const handleAdvancedEditorSave = (title: string, lyrics: string) => {
+    // Update the flow stage with the edited lyrics
+    dispatch({ type: 'SET_STAGE_DATA', stage: 'flow', payload: lyrics });
+    dispatch({ type: 'TOGGLE_ADVANCED_EDITOR' });
+    toast({
+      title: "Lyrics Updated",
+      description: "Your edited lyrics have been saved to the Flow stage",
+    });
+  };
+
+  const handleStageEdit = (stageId: string, newContent: string) => {
+    dispatch({ type: 'UPDATE_STAGE_OUTPUT', stage: stageId, payload: newContent });
+    toast({
+      title: "Stage Updated",
+      description: "Content has been edited successfully",
+    });
+  };
+
   const interruptProcess = () => {
     dispatch({ type: 'SET_INTERRUPT_REQUESTED', payload: true });
     dispatch({ type: 'SET_LOADING', payload: false });
@@ -746,6 +799,26 @@ Return only the enhanced version, no explanations.`;
             <span className="lyric-accent">Cadence</span> Codex
           </h1>
           <div className="flex items-center space-x-1">
+            {/* Add Library Button */}
+            <button
+              onClick={() => dispatch({ type: 'TOGGLE_LYRIC_LIBRARY' })}
+              className="p-1.5 rounded-lg lyric-surface hover:lyric-highlight-bg transition-all duration-300 shadow-sm hover:shadow-md transform hover:scale-105 text-purple-500 hover:text-purple-600"
+              title="Lyric Library"
+            >
+              <Music size={14} />
+            </button>
+            
+            {/* Add Advanced Editor Button */}
+            {state.stageData['flow'] && (
+              <button
+                onClick={() => dispatch({ type: 'TOGGLE_ADVANCED_EDITOR' })}
+                className="p-1.5 rounded-lg lyric-surface hover:lyric-highlight-bg transition-all duration-300 shadow-sm hover:shadow-md transform hover:scale-105 text-green-500 hover:text-green-600"
+                title="Advanced Editor"
+              >
+                <Edit3 size={14} />
+              </button>
+            )}
+
             {/* Add Interrupt Button */}
             {state.isLoading && (
               <button
@@ -756,6 +829,7 @@ Return only the enhanced version, no explanations.`;
                 <StopCircle size={14} />
               </button>
             )}
+            
             {/* Add Clear Output Button */}
             {Object.keys(state.stageData).length > 0 && (
               <button
@@ -803,6 +877,32 @@ Return only the enhanced version, no explanations.`;
             </div>
             
             <div className="space-y-1.5">
+              {/* Add Library button to mobile menu */}
+              <button
+                onClick={() => {
+                  dispatch({ type: 'TOGGLE_LYRIC_LIBRARY' });
+                  dispatch({ type: 'TOGGLE_MOBILE_MENU' });
+                }}
+                className="w-full p-2 rounded-lg lyric-bg-secondary border lyric-border border-opacity-30 flex items-center space-x-2 hover:lyric-highlight-bg transition-colors text-xs text-purple-500"
+              >
+                <Music size={14} />
+                <span>Lyric Library</span>
+              </button>
+
+              {/* Add Advanced Editor button to mobile menu */}
+              {state.stageData['flow'] && (
+                <button
+                  onClick={() => {
+                    dispatch({ type: 'TOGGLE_ADVANCED_EDITOR' });
+                    dispatch({ type: 'TOGGLE_MOBILE_MENU' });
+                  }}
+                  className="w-full p-2 rounded-lg lyric-bg-secondary border lyric-border border-opacity-30 flex items-center space-x-2 hover:lyric-highlight-bg transition-colors text-xs text-green-500"
+                >
+                  <Edit3 size={14} />
+                  <span>Advanced Editor</span>
+                </button>
+              )}
+
               {/* Add Interrupt button to mobile menu */}
               {state.isLoading && (
                 <button
@@ -1049,7 +1149,7 @@ Return only the enhanced version, no explanations.`;
           </div>
         </div>
 
-        {/* Compact Stages */}
+        {/* Enhanced Compact Stages with Edit Buttons */}
         <div className="space-y-1.5">
           {STAGES.map((stage, index) => {
             const isExpanded = state.expandedStages.has(stage.id);
@@ -1194,26 +1294,34 @@ Return only the enhanced version, no explanations.`;
                       />
                     </div>
 
-                    {/* Compact Stage Output */}
+                    {/* Compact Stage Output with Edit Capability */}
                     {hasData && (
                       <div className="mb-2.5">
-                        <label className="text-xs font-medium mb-1 block lyric-accent">AI Response</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium lyric-accent">AI Response</label>
+                          <button
+                            onClick={() => copyToClipboard(state.stageData[stage.id])}
+                            className="p-1 rounded-md lyric-surface hover:lyric-highlight-bg transition-all duration-300 shadow-sm border lyric-border border-opacity-30"
+                            title="Copy to clipboard"
+                          >
+                            <Copy size={12} />
+                          </button>
+                        </div>
+                        
                         {isAnimating ? (
                           <div className={`p-2 rounded-lg lyric-bg-secondary border lyric-border border-opacity-30 text-xs leading-relaxed ${stage.id === 'flow' && !isDark ? 'typewriter-font' : ''} ${stage.id === 'flow' ? 'min-h-[100px]' : ''}`}>
                             <span>{state.animationState.targetText.slice(0, state.animationState.currentChar)}</span>
                             <span className="animate-pulse lyric-accent font-bold">|</span>
                           </div>
                         ) : (
-                          <textarea
-                            value={state.stageData[stage.id]}
-                            onChange={(e) => dispatch({ 
-                              type: 'SET_STAGE_DATA', 
-                              stage: stage.id, 
-                              payload: e.target.value
-                            })}
-                            className={`w-full p-2 rounded-lg lyric-bg-secondary border lyric-border border-opacity-30 focus:ring-2 focus:ring-opacity-50 lyric-highlight transition-all duration-300 text-xs leading-relaxed resize-vertical ${stage.id === 'flow' && !isDark ? 'typewriter-font' : ''}`}
-                            rows={stage.id === 'flow' ? 10 : 4}
-                          />
+                          <div className="relative">
+                            <textarea
+                              value={state.stageData[stage.id]}
+                              onChange={(e) => handleStageEdit(stage.id, e.target.value)}
+                              className={`w-full p-2 rounded-lg lyric-bg-secondary border lyric-border border-opacity-30 focus:ring-2 focus:ring-opacity-50 lyric-highlight transition-all duration-300 text-xs leading-relaxed resize-vertical ${stage.id === 'flow' && !isDark ? 'typewriter-font' : ''}`}
+                              rows={stage.id === 'flow' ? 10 : 4}
+                            />
+                          </div>
                         )}
                         
                         {/* Compact Animation Controls */}
@@ -1429,6 +1537,26 @@ Return only the enhanced version, no explanations.`;
           onClose={() => dispatch({ type: 'TOGGLE_PREP_FOR_SUNO' })}
         />
       )}
+
+      {/* Lyric Library Modal */}
+      <LyricLibrary
+        isOpen={state.showLyricLibrary}
+        onClose={() => dispatch({ type: 'TOGGLE_LYRIC_LIBRARY' })}
+        onLoadLyrics={handleLoadFromLibrary}
+        currentLyrics={state.stageData['flow']}
+        currentTitle={state.userInput.split('\n')[0]?.replace('Title:', '').trim()}
+      />
+
+      {/* Advanced Lyric Editor Modal */}
+      <AdvancedLyricEditor
+        isOpen={state.showAdvancedEditor}
+        onClose={() => dispatch({ type: 'TOGGLE_ADVANCED_EDITOR' })}
+        initialLyrics={state.stageData['flow']}
+        initialTitle={state.userInput.split('\n')[0]?.replace('Title:', '').trim()}
+        onSave={handleAdvancedEditorSave}
+        apiKey={state.settings.apiKey}
+        selectedModel={state.settings.selectedModel}
+      />
     </div>
   );
 }
