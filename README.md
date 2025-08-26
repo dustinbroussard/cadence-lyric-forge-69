@@ -34,6 +34,12 @@ npm i
 
 # Step 4: Start the development server with auto-reloading and an instant preview.
 npm run dev
+
+# Additional helpful scripts
+# TypeScript type checking
+npm run typecheck
+# Run unit tests
+npm test
 ```
 
 **Edit a file directly in GitHub**
