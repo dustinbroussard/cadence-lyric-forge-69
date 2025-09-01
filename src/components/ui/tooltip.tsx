@@ -50,17 +50,18 @@ const TooltipTrigger = React.forwardRef<
   const handleMouseLeave = () => setIsVisible(false);
 
   if (asChild && React.isValidElement(children)) {
-    return React.cloneElement(children, { 
-      ...props, 
-      ref,
+    return React.cloneElement(children as React.ReactElement, {
+      ...props,
+      // ref typing for cloneElement is limited; pass-through without any
+      ref: ref as unknown as never,
       onMouseEnter: handleMouseEnter,
-      onMouseLeave: handleMouseLeave
-    } as any)
+      onMouseLeave: handleMouseLeave,
+    })
   }
   
   return (
     <span 
-      ref={ref as any} 
+      ref={ref as React.Ref<HTMLElement>} 
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       {...props}

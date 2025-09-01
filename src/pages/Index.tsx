@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useReducer, useEffect, useCallback, useRef } from 'react';
 import { Play, Pause, Square, Download, Settings, Sun, Moon, Edit3, RotateCcw, Save, ChevronDown, ChevronRight, Menu, X, Copy, Music, Trash2, Users, StopCircle, ArrowRight } from 'lucide-react';
 import { playTypewriterSound, triggerHaptic } from '../utils/audioUtils';
@@ -19,7 +18,11 @@ import { ModelSlatesManager } from '../components/ModelSlatesManager';
 
 import { ModelDropdown } from '../components/ModelDropdown';
 import { buildPromptWithGenreInjection, buildCritiquePrompt, PromptContext } from '../utils/promptManager';
+import { chat } from '@/lib/openrouter/client';
 import { analyzeLyricForMusicalFit, MusicalSuggestions } from '../utils/musicalSuggestions';
+import { normalizeFinalLyrics, normalizeSectionLabels } from '@/utils/lyrics';
+import { Markdown } from '@/components/Markdown';
+import { loadState, saveStateThrottled } from '@/lib/state/persistence';
 import { CRITIQUE_PROMPT } from '../data/critiquePrompts';
 
 // Default prompts for each stage - Updated stage 3 to include first draft generation
@@ -51,7 +54,90 @@ const CRITIQUE_STAGE = {
   description: 'Get professional feedback on your lyrics'
 };
 
-const initialState = {
+type StageId = 'perspective' | 'message' | 'tone' | 'metaphor' | 'themes' | 'musicalSuggestions' | 'flow' | 'critique';
+
+interface MusicalContext {
+  selectedGenres: string[];
+  selectedStructure: string;
+  isExpanded: boolean;
+  tempo: string;
+  chordProgression: string;
+  timeSignature: string;
+  rhythmFeel: string;
+}
+
+interface Settings {
+  theme: 'dark' | 'light';
+  apiKey: string;
+  selectedModel: string;
+  soundEnabled: boolean;
+  hapticEnabled: boolean;
+  autoSuggestMusic: boolean;
+  typewriterEnabled: boolean;
+  skipMusicalStage: boolean;
+  showMarkdownPreview: boolean;
+  liveLabelNormalization: boolean;
+}
+
+interface AnimationState {
+  isPlaying: boolean;
+  currentChar: number;
+  targetText: string;
+  targetStage: string;
+}
+
+interface AppState {
+  userInput: string;
+  currentStage: number;
+  stageData: Record<string, string>;
+  customPrompts: Record<string, string>;
+  stageModels: Record<string, string>;
+  musicalContext: MusicalContext;
+  settings: Settings;
+  isLoading: boolean;
+  expandedStages: Set<string>;
+  animationState: AnimationState;
+  showMobileMenu: boolean;
+  showPromptSetManager: boolean;
+  showPrepForSuno: boolean;
+  musicalSuggestions: MusicalSuggestions | null;
+  showMusicalSuggestions: boolean;
+  showClearOutputDialog: boolean;
+  showModelSlatesManager: boolean;
+  interruptRequested: boolean;
+  showLyricLibrary: boolean;
+  showAdvancedEditor: boolean;
+}
+
+type AppSavedState = Pick<AppState, 'userInput' | 'stageData' | 'customPrompts' | 'stageModels' | 'musicalContext' | 'settings'>;
+
+type AppAction =
+  | { type: 'SET_USER_INPUT'; payload: string }
+  | { type: 'SET_CURRENT_STAGE'; payload: number }
+  | { type: 'SET_STAGE_DATA'; stage: string; payload: string }
+  | { type: 'SET_CUSTOM_PROMPT'; stage: string; payload: string }
+  | { type: 'UPDATE_SETTINGS'; payload: Partial<Settings> }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'TOGGLE_STAGE_EXPANSION'; payload: string }
+  | { type: 'SET_ANIMATION_STATE'; payload: Partial<AnimationState> }
+  | { type: 'TOGGLE_MOBILE_MENU' }
+  | { type: 'UPDATE_MUSICAL_CONTEXT'; payload: Partial<MusicalContext> }
+  | { type: 'SET_MUSICAL_SUGGESTIONS'; payload: MusicalSuggestions | null }
+  | { type: 'TOGGLE_PROMPT_SET_MANAGER' }
+  | { type: 'RESET_ALL' }
+  | { type: 'SET_STAGE_MODEL'; stage: string; payload: string }
+  | { type: 'TOGGLE_PREP_FOR_SUNO' }
+  | { type: 'TOGGLE_CLEAR_OUTPUT_DIALOG' }
+  | { type: 'CLEAR_ALL_OUTPUT' }
+  | { type: 'TOGGLE_MODEL_SLATES_MANAGER' }
+  | { type: 'LOAD_MODEL_SLATE'; payload: Record<string, string> }
+  | { type: 'SET_INTERRUPT_REQUESTED'; payload: boolean }
+  | { type: 'AUTO_EXPAND_STAGE'; payload: string }
+  | { type: 'TOGGLE_LYRIC_LIBRARY' }
+  | { type: 'TOGGLE_ADVANCED_EDITOR' }
+  | { type: 'UPDATE_STAGE_OUTPUT'; stage: string; payload: string };
+
+const initialState: AppState = {
   userInput: '',
   currentStage: 0,
   stageData: {},
@@ -72,7 +158,11 @@ const initialState = {
     selectedModel: 'anthropic/claude-3-haiku',
     soundEnabled: true,
     hapticEnabled: true,
-    autoSuggestMusic: true
+    autoSuggestMusic: true,
+    typewriterEnabled: true,
+    skipMusicalStage: false,
+    showMarkdownPreview: true,
+    liveLabelNormalization: true
   },
   isLoading: false,
   expandedStages: new Set(),
@@ -90,7 +180,7 @@ const initialState = {
   showAdvancedEditor: false
 };
 
-function appReducer(state, action) {
+function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_USER_INPUT':
       return { ...state, userInput: action.payload };
@@ -113,7 +203,7 @@ function appReducer(state, action) {
       };
     case 'SET_LOADING':
       return { ...state, isLoading: action.payload };
-    case 'TOGGLE_STAGE_EXPANSION':
+    case 'TOGGLE_STAGE_EXPANSION': {
       const newExpanded = new Set(state.expandedStages);
       if (newExpanded.has(action.payload)) {
         newExpanded.delete(action.payload);
@@ -121,6 +211,7 @@ function appReducer(state, action) {
         newExpanded.add(action.payload);
       }
       return { ...state, expandedStages: newExpanded };
+    }
     case 'SET_ANIMATION_STATE':
       return {
         ...state,
@@ -166,10 +257,11 @@ function appReducer(state, action) {
       return { ...state, stageModels: { ...action.payload } };
     case 'SET_INTERRUPT_REQUESTED':
       return { ...state, interruptRequested: action.payload };
-    case 'AUTO_EXPAND_STAGE':
+    case 'AUTO_EXPAND_STAGE': {
       const expandedSet = new Set(state.expandedStages);
       expandedSet.add(action.payload);
       return { ...state, expandedStages: expandedSet };
+    }
     case 'TOGGLE_LYRIC_LIBRARY':
       return { ...state, showLyricLibrary: !state.showLyricLibrary };
     case 'TOGGLE_ADVANCED_EDITOR':
@@ -185,39 +277,38 @@ function appReducer(state, action) {
 }
 
 export default function CadenceCodex() {
-  const [state, dispatch] = useReducer(appReducer, { ...initialState, interruptRequested: false });
+  const [state, dispatch] = useReducer<React.Reducer<AppState, AppAction>>(appReducer, { ...initialState, interruptRequested: false });
   const [showSettings, setShowSettings] = useState(false);
   const [enhancingPrompt, setEnhancingPrompt] = useState(false);
-  const animationRef = useRef(null);
+  const animationRef = useRef<number | undefined>(undefined);
   const { toast } = useToast();
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount (versioned with migration support)
   useEffect(() => {
-    const saved = localStorage.getItem('cadence-codex-state');
-    if (saved) {
+    const parsedState = loadState<AppSavedState>('cadence-codex-state');
+    if (parsedState) {
       try {
-        const parsedState = JSON.parse(saved);
         dispatch({ type: 'UPDATE_SETTINGS', payload: parsedState.settings || {} });
         dispatch({ type: 'SET_USER_INPUT', payload: parsedState.userInput || '' });
         dispatch({ type: 'UPDATE_MUSICAL_CONTEXT', payload: parsedState.musicalContext || {} });
         Object.entries(parsedState.stageData || {}).forEach(([stage, data]) => {
-          dispatch({ type: 'SET_STAGE_DATA', stage, payload: data });
+          dispatch({ type: 'SET_STAGE_DATA', stage, payload: data as string });
         });
         Object.entries(parsedState.customPrompts || {}).forEach(([stage, prompt]) => {
-          dispatch({ type: 'SET_CUSTOM_PROMPT', stage, payload: prompt });
+          dispatch({ type: 'SET_CUSTOM_PROMPT', stage, payload: prompt as string });
         });
         if (parsedState.stageModels) {
           Object.entries(parsedState.stageModels).forEach(([stage, modelId]) => {
-            dispatch({ type: 'SET_STAGE_MODEL', stage, payload: modelId });
+            dispatch({ type: 'SET_STAGE_MODEL', stage, payload: modelId as string });
           });
         }
       } catch (e) {
-        console.error('Failed to load saved state:', e);
+        console.error('Failed to hydrate saved state:', e);
       }
     }
   }, []);
 
-  // Save to localStorage when state changes
+  // Save to localStorage when state changes (throttled)
   useEffect(() => {
     const stateToSave = {
       userInput: state.userInput,
@@ -227,23 +318,10 @@ export default function CadenceCodex() {
       musicalContext: state.musicalContext,
       settings: state.settings
     };
-    localStorage.setItem('cadence-codex-state', JSON.stringify(stateToSave));
+    saveStateThrottled<AppSavedState>(stateToSave, 'cadence-codex-state', 500);
   }, [state.userInput, state.stageData, state.customPrompts, state.stageModels, state.musicalContext, state.settings]);
 
-  // Register service worker
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then((registration) => {
-            console.log('SW registered: ', registration);
-          })
-          .catch((registrationError) => {
-            console.log('SW registration failed: ', registrationError);
-          });
-      });
-    }
-  }, []);
+  // Service worker registration is handled in index.html to avoid double registration
 
   const callOpenRouter = async (prompt, context, modelOverride = null) => {
     if (!state.settings.apiKey) {
@@ -256,112 +334,34 @@ export default function CadenceCodex() {
     }
 
     const fullPrompt = `${context}\n\nStage Prompt: ${prompt}`;
-    
-    console.log('🔄 Making API request to OpenRouter...');
-    console.log('📝 Model:', modelToUse);
-    console.log('🔑 API Key exists:', !!state.settings.apiKey);
-    console.log('🌐 Request URL:', 'https://openrouter.ai/api/v1/chat/completions');
-    
-    // Create an AbortController for request timeout and interruption
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log('⏰ Request timeout triggered');
-      controller.abort();
-    }, 60000); // 60 second timeout
-    
-    // Check for interrupt request
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
     if (state.interruptRequested) {
       controller.abort();
       throw new Error('Request interrupted by user');
     }
-    
+
     try {
-      console.log('🚀 Sending fetch request...');
-      
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${state.settings.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': window.location.href,
-          'X-Title': 'Cadence Codex',
-          'User-Agent': 'Cadence-Codex/1.0',
-          'Accept': 'application/json'
-        },
+      const res = await chat({
+        model: modelToUse,
+        messages: [{ role: 'user', content: fullPrompt }],
         signal: controller.signal,
-        body: JSON.stringify({
-          model: modelToUse,
-          messages: [
-            {
-              role: 'user',
-              content: fullPrompt
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.8
-        })
+        apiKey: state.settings.apiKey,
       });
-
+      const content = res.choices?.[0]?.message?.content ?? '';
+      if (!content) throw new Error('Empty response from model');
+      return content;
+    } catch (error: unknown) {
+      const err = error as { name?: string } | undefined;
+      if (err?.name === 'AbortError') {
+        if (state.interruptRequested) throw new Error('Request interrupted by user');
+        throw new Error('Request timed out. Please try again.');
+      }
+      throw error as Error;
+    } finally {
       clearTimeout(timeoutId);
-      
-      console.log('📡 Response received:', response.status, response.statusText);
-      console.log('🔍 Response headers:', Object.fromEntries(response.headers.entries()));
-
-      if (!response.ok) {
-        let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
-        
-        try {
-          const errorData = await response.json();
-          console.log('❌ Error response data:', errorData);
-          if (errorData.error?.message) {
-            errorMessage = errorData.error.message;
-          }
-        } catch (parseError) {
-          console.error('Could not parse error response:', parseError);
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      const data = await response.json();
-      console.log('✅ API response successful');
-      
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        console.error('❌ Invalid response format:', data);
-        throw new Error('Invalid response format from API');
-      }
-      
-      return data.choices[0].message.content || 'No response generated';
-      
-    } catch (error) {
-      clearTimeout(timeoutId);
-      
-      console.error('🔴 API call failed:', error);
-      console.error('🔴 Error type:', error.constructor.name);
-      console.error('🔴 Error message:', error.message);
-      
-      if (error.name === 'AbortError') {
-        if (state.interruptRequested) {
-          throw new Error('Request interrupted by user');
-        }
-        throw new Error('Request timed out. Please check your internet connection and try again.');
-      }
-      
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error('Network error: Unable to connect to OpenRouter API. Please check your internet connection.');
-      }
-
-      // Check for specific network errors
-      if (error.message.includes('Failed to fetch')) {
-        throw new Error('Network connection failed. Please check your internet connection and firewall settings.');
-      }
-
-      if (error.message.includes('ERR_NETWORK')) {
-        throw new Error('Network error detected. Please check if OpenRouter.ai is accessible from your location.');
-      }
-      
-      // Re-throw the original error if it's already a meaningful error
-      throw error;
     }
   };
 
@@ -375,6 +375,11 @@ export default function CadenceCodex() {
       
       // Handle Musical Suggestions stage specifically
       if (stage.id === 'musicalSuggestions') {
+        if (state.settings.skipMusicalStage) {
+          dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: 'Stage skipped.' });
+          dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+          return;
+        }
         const needsSuggestions = !state.musicalContext.tempo && 
                                !state.musicalContext.chordProgression && 
                                !state.musicalContext.timeSignature && 
@@ -402,7 +407,6 @@ export default function CadenceCodex() {
 These musical elements have been suggested based on your lyrical content and selected genres. You can accept these suggestions or modify them in the Musical Context panel above.`;
 
             dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: formattedResponse });
-            dispatch({ type: 'SET_MUSICAL_SUGGESTIONS', payload: suggestions });
             dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
             return;
           } catch (error) {
@@ -464,13 +468,16 @@ Your musical context is ready! These settings will influence the Flow stage to c
       
       // Use stage-specific model if selected, otherwise fall back to global setting
       const stageModel = state.stageModels[stage.id] || state.settings.selectedModel;
-      const result = await callOpenRouter(enhancedPrompt, context, stageModel);
-      
+      let result = await callOpenRouter(enhancedPrompt, context, stageModel);
+      // Normalize final lyric structure for Flow stage
+      if (stage.id === 'flow') {
+        result = normalizeFinalLyrics(result);
+      }
       dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: result });
       dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
       
-      // Start typewriter animation for all stages, not just flow
-      if (result && result.length > 50) {
+      // Start typewriter animation for all stages when enabled
+      if (state.settings.typewriterEnabled && result && result.length > 50) {
         startTypewriterAnimation(result, stage.id);
       }
       
@@ -491,7 +498,11 @@ Your musical context is ready! These settings will influence the Flow stage to c
   const processCritique = async () => {
     const flowStageData = state.stageData['flow'];
     if (!flowStageData) {
-      alert('Please complete the Flow stage first to get critique');
+      toast({
+        title: 'Flow Required',
+        description: 'Complete the Flow stage first to get critique.',
+        variant: 'destructive'
+      });
       return;
     }
 
@@ -519,8 +530,8 @@ Your musical context is ready! These settings will influence the Flow stage to c
   };
 
   // Enhanced typewriter animation with interrupt handling
-  const startTypewriterAnimation = useCallback((text, stageId) => {
-    if (animationRef.current) {
+  const startTypewriterAnimation = useCallback((text: string, stageId: string) => {
+    if (animationRef.current !== undefined) {
       clearInterval(animationRef.current);
     }
 
@@ -535,10 +546,10 @@ Your musical context is ready! These settings will influence the Flow stage to c
       }
     });
 
-    animationRef.current = setInterval(() => {
+    animationRef.current = window.setInterval(() => {
       // Check for interrupt
       if (state.interruptRequested) {
-        clearInterval(animationRef.current);
+        if (animationRef.current !== undefined) clearInterval(animationRef.current);
         dispatch({ 
           type: 'SET_ANIMATION_STATE', 
           payload: { isPlaying: false, currentChar: text.length }
@@ -560,7 +571,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
           triggerHaptic();
         }
       } else {
-        clearInterval(animationRef.current);
+        if (animationRef.current !== undefined) clearInterval(animationRef.current);
         dispatch({ 
           type: 'SET_ANIMATION_STATE', 
           payload: { isPlaying: false }
@@ -570,7 +581,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
   }, [state.settings.soundEnabled, state.settings.hapticEnabled, state.interruptRequested]);
 
   const pauseAnimation = () => {
-    if (animationRef.current) {
+    if (animationRef.current !== undefined) {
       clearInterval(animationRef.current);
     }
     dispatch({ 
@@ -589,7 +600,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
   };
 
   const skipAnimation = () => {
-    if (animationRef.current) {
+    if (animationRef.current !== undefined) {
       clearInterval(animationRef.current);
     }
     dispatch({ 
@@ -601,8 +612,58 @@ Your musical context is ready! These settings will influence the Flow stage to c
     });
   };
 
+  // Run all stages sequentially
+  const runAllStages = async () => {
+    if (state.isLoading) return;
+    dispatch({ type: 'SET_INTERRUPT_REQUESTED', payload: false });
+    try {
+      for (let i = 0; i < STAGES.length; i++) {
+        if (state.interruptRequested) break;
+        const stage = STAGES[i];
+        if (stage.id === 'musicalSuggestions') {
+          if (state.settings.skipMusicalStage) {
+            dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: 'Stage skipped.' });
+            dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+            continue;
+          }
+          const needsSuggestions = !state.musicalContext.tempo &&
+            !state.musicalContext.chordProgression &&
+            !state.musicalContext.timeSignature &&
+            !state.musicalContext.rhythmFeel;
+
+          if (needsSuggestions) {
+            try {
+              const suggestions = await analyzeLyricForMusicalFit(
+                state.userInput,
+                Object.values(state.stageData).join('\n\n'),
+                state.musicalContext.selectedGenres,
+                callOpenRouter
+              );
+              const formattedResponse = `🎵 **Musical Recommendations**\n\n**Tempo:** ${suggestions.tempo} BPM\n**Chord Progression:** ${suggestions.chordProgression}\n**Time Signature:** ${suggestions.timeSignature}\n**Rhythmic Feel:** ${suggestions.rhythmFeel}\n\n**Reasoning:** ${suggestions.reasoning}`;
+              dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: formattedResponse });
+              dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+            } catch (e) {
+              dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: 'Could not auto-generate musical suggestions.' });
+              dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+            }
+          } else {
+            const contextSummary = `🎵 **Current Musical Settings**\n\n**Tempo:** ${state.musicalContext.tempo || 'Not set'} ${state.musicalContext.tempo ? 'BPM' : ''}\n**Chord Progression:** ${state.musicalContext.chordProgression || 'Not set'}\n**Time Signature:** ${state.musicalContext.timeSignature || 'Not set'}\n**Rhythmic Feel:** ${state.musicalContext.rhythmFeel || 'Not set'}`;
+            dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: contextSummary });
+            dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+          }
+        } else {
+          // Reuse processStage for normal stages
+          await processStage(i);
+        }
+      }
+    } catch (e) {
+      console.error('Run all stages failed', e);
+    }
+  };
+
   const exportLyrics = () => {
-    const finalLyrics = state.stageData[STAGES[STAGES.length - 1].id] || 'No lyrics generated yet';
+    const raw = state.stageData[STAGES[STAGES.length - 1].id] || 'No lyrics generated yet';
+    const finalLyrics = normalizeFinalLyrics(raw);
     const blob = new Blob([finalLyrics], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -755,7 +816,7 @@ Return only the enhanced version, no explanations.`;
 
   const handleAdvancedEditorSave = (title: string, lyrics: string) => {
     // Update the flow stage with the edited lyrics
-    dispatch({ type: 'SET_STAGE_DATA', stage: 'flow', payload: lyrics });
+    dispatch({ type: 'SET_STAGE_DATA', stage: 'flow', payload: normalizeFinalLyrics(lyrics) });
     dispatch({ type: 'TOGGLE_ADVANCED_EDITOR' });
     toast({
       title: "Lyrics Updated",
@@ -764,7 +825,10 @@ Return only the enhanced version, no explanations.`;
   };
 
   const handleStageEdit = (stageId: string, newContent: string) => {
-    dispatch({ type: 'UPDATE_STAGE_OUTPUT', stage: stageId, payload: newContent });
+    const content = (stageId === 'flow' && state.settings.liveLabelNormalization)
+      ? normalizeSectionLabels(newContent)
+      : newContent;
+    dispatch({ type: 'UPDATE_STAGE_OUTPUT', stage: stageId, payload: content });
     toast({
       title: "Stage Updated",
       description: "Content has been edited successfully",
@@ -789,15 +853,26 @@ Return only the enhanced version, no explanations.`;
 
   const isDark = state.settings.theme === 'dark';
 
+  // Apply theme to <html> for light/dark variables and Tailwind dark class
+  useEffect(() => {
+    const html = document.documentElement;
+    html.setAttribute('data-theme', state.settings.theme);
+    if (state.settings.theme === 'dark') {
+      html.classList.add('dark');
+    } else {
+      html.classList.remove('dark');
+    }
+  }, [state.settings.theme]);
+
   return (
     <div className={`min-h-screen transition-all duration-500 ${isDark ? 'dark' : ''} lyric-bg-primary lyric-text`}>
       <InstallPrompt />
       
       {/* Enhanced Compact Mobile Header */}
-      <header className="lyric-surface border-b lyric-border border-opacity-30 px-2 py-1.5 shadow-lg sticky top-0 z-40">
+      <header className="brand-header">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <h1 className="text-lg font-bold tracking-wide">
-            <span className="lyric-accent">Cadence</span> Codex
+          <h1 className="text-lg font-bold tracking-wide select-none">
+            <span className="brand-text-gradient">Cadence</span> Codex
           </h1>
           <div className="flex items-center space-x-1">
             {/* Add Library Button */}
@@ -1058,6 +1133,54 @@ Return only the enhanced version, no explanations.`;
                   />
                   <span className="text-xs font-medium">Auto-Suggest Musical Settings</span>
                 </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={state.settings.typewriterEnabled}
+                    onChange={(e) => dispatch({ 
+                      type: 'UPDATE_SETTINGS', 
+                      payload: { typewriterEnabled: e.target.checked }
+                    })}
+                    className="w-3 h-3 lyric-accent-bg rounded"
+                  />
+                  <span className="text-xs font-medium">Typewriter Animation</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={state.settings.skipMusicalStage}
+                    onChange={(e) => dispatch({ 
+                      type: 'UPDATE_SETTINGS', 
+                      payload: { skipMusicalStage: e.target.checked }
+                    })}
+                    className="w-3 h-3 lyric-accent-bg rounded"
+                  />
+                  <span className="text-xs font-medium">Skip Stage 6 (Musical Suggestions)</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={state.settings.showMarkdownPreview}
+                    onChange={(e) => dispatch({ 
+                      type: 'UPDATE_SETTINGS', 
+                      payload: { showMarkdownPreview: e.target.checked }
+                    })}
+                    className="w-3 h-3 lyric-accent-bg rounded"
+                  />
+                  <span className="text-xs font-medium">Show Markdown Preview</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={state.settings.liveLabelNormalization}
+                    onChange={(e) => dispatch({ 
+                      type: 'UPDATE_SETTINGS', 
+                      payload: { liveLabelNormalization: e.target.checked }
+                    })}
+                    className="w-3 h-3 lyric-accent-bg rounded"
+                  />
+                  <span className="text-xs font-medium">Live Section Labeling (Flow)</span>
+                </label>
               </div>
               
               <div className="flex flex-col gap-1.5">
@@ -1147,6 +1270,15 @@ Return only the enhanced version, no explanations.`;
                 <span>Export</span>
               </button>
             )}
+            {/* Run All Stages */}
+            <button
+              onClick={runAllStages}
+              disabled={state.isLoading}
+              className="px-2.5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-300 disabled:opacity-50 shadow-sm hover:shadow-md transform hover:scale-105 text-xs"
+              title="Generate all stages sequentially"
+            >
+              Run All
+            </button>
           </div>
         </div>
 
@@ -1248,6 +1380,20 @@ Return only the enhanced version, no explanations.`;
                         </div>
                       </div>
                     )}
+                    {stage.id === 'musicalSuggestions' && (
+                      <div className="mb-2.5">
+                        <button
+                          onClick={() => {
+                            dispatch({ type: 'UPDATE_SETTINGS', payload: { skipMusicalStage: true } });
+                            dispatch({ type: 'SET_STAGE_DATA', stage: 'musicalSuggestions', payload: 'Stage skipped.' });
+                            toast({ title: 'Stage 6 Skipped', description: 'Musical Suggestions will be bypassed.' });
+                          }}
+                          className="px-2 py-1.5 lyric-surface border lyric-border border-opacity-30 rounded-lg hover:lyric-highlight-bg transition-all duration-300 text-xs"
+                        >
+                          Skip this stage
+                        </button>
+                      </div>
+                    )}
 
                     {/* Compact Prompt Editor */}
                     <div className="mb-2.5">
@@ -1322,6 +1468,12 @@ Return only the enhanced version, no explanations.`;
                               className={`w-full p-2 rounded-lg lyric-bg-secondary border lyric-border border-opacity-30 focus:ring-2 focus:ring-opacity-50 lyric-highlight transition-all duration-300 text-xs leading-relaxed resize-vertical ${stage.id === 'flow' && !isDark ? 'typewriter-font' : ''}`}
                               rows={stage.id === 'flow' ? 10 : 4}
                             />
+                            {/* Markdown preview */}
+                            {state.settings.showMarkdownPreview && state.stageData[stage.id] && (
+                              <div className="mt-2 p-2 rounded-lg lyric-bg-secondary border lyric-border border-opacity-30">
+                                <Markdown content={stage.id === 'flow' ? normalizeSectionLabels(state.stageData[stage.id]) : state.stageData[stage.id]} />
+                              </div>
+                            )}
                           </div>
                         )}
                         
@@ -1387,7 +1539,7 @@ Return only the enhanced version, no explanations.`;
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold shadow-sm transition-all duration-300 text-xs ${
                     state.stageData['critique'] ? 'lyric-accent-bg text-white' : 'lyric-bg-secondary border lyric-border border-opacity-50'
                   }`}>
-                    7
+                    {STAGES.length + 1}
                   </div>
                   <div>
                     <h3 className="font-bold text-xs">Review & Critique</h3>

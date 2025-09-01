@@ -2,7 +2,8 @@
 // Sound effects and haptic feedback utilities
 export const playTypewriterSound = () => {
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const w = window as Window & { webkitAudioContext?: typeof window.AudioContext };
+    const AudioContextClass = window.AudioContext || w.webkitAudioContext;
     if (!AudioContextClass) {
       console.log('AudioContext not supported');
       return;

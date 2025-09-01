@@ -84,7 +84,7 @@ export const PrepForSuno: React.FC<PrepForSunoProps> = ({
 
   const cleanLyrics = (rawLyrics: string) => {
     // Remove all markdown formatting, asterisks, commentary, and cleanup
-    let cleaned = rawLyrics
+    const cleaned = rawLyrics
       // Remove markdown formatting
       .replace(/\*\*/g, '')
       .replace(/\*/g, '')

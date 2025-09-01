@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Download, Trash2, Edit, Music, Clock, Tags, Search, Filter } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 
@@ -37,6 +38,19 @@ export function LyricLibrary({ isOpen, onClose, onLoadLyrics, currentLyrics, cur
   useEffect(() => {
     loadLibrary();
   }, []);
+
+  // Close save dialog on Escape
+  useEffect(() => {
+    if (!showSaveDialog) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowSaveDialog(false);
+        setEditingEntry(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showSaveDialog]);
 
   const loadLibrary = () => {
     const saved = localStorage.getItem('lyric-library');
@@ -309,12 +323,11 @@ ${entry.notes ? `\n---\n**Notes:**\n${entry.notes}` : ''}`;
           )}
         </div>
 
-        {/* Save Dialog */}
-        {showSaveDialog && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-            <div className="lyric-surface rounded-lg p-6 w-full max-w-md">
+        {/* Save Dialog (portal to avoid clipping/stacking issues) */}
+        {showSaveDialog && createPortal(
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60">
+            <div className="lyric-surface p-6 w-full max-w-md rounded-xl" role="dialog" aria-modal="true">
               <h3 className="font-bold text-lg mb-4">{editingEntry ? 'Edit Entry' : 'Save to Library'}</h3>
-              
               <SaveForm
                 initialData={editingEntry}
                 defaultTitle={currentTitle}
@@ -325,7 +338,8 @@ ${entry.notes ? `\n---\n**Notes:**\n${entry.notes}` : ''}`;
                 }}
               />
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </div>

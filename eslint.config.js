@@ -23,6 +23,8 @@ export default tseslint.config(
         "warn",
         { allowConstantExport: true },
       ],
+      // Disable problematic rule causing crashes with current plugin versions
+      "@typescript-eslint/no-unused-expressions": "off",
       "@typescript-eslint/no-unused-vars": "off",
     },
   }

@@ -18,9 +18,12 @@ export const InstallPrompt: React.FC = () => {
   useEffect(() => {
     // Check if already installed
     const isInstalled = () => {
-      return window.matchMedia('(display-mode: standalone)').matches ||
-             (window.navigator as any).standalone === true ||
-             document.referrer.includes('android-app://');
+      const nav = window.navigator as Navigator & { standalone?: boolean };
+      return (
+        window.matchMedia('(display-mode: standalone)').matches ||
+        nav.standalone === true ||
+        document.referrer.includes('android-app://')
+      );
     };
 
     console.log('PWA Install Check - Already installed:', isInstalled());
@@ -30,12 +33,12 @@ export const InstallPrompt: React.FC = () => {
       return;
     }
 
-    // Check if dismissed recently (reduced to 5 minutes for aggressive prompting)
+    // Check if dismissed recently (snooze for 7 days)
     const dismissed = localStorage.getItem('pwa-install-dismissed');
     if (dismissed) {
       const dismissedTime = parseInt(dismissed);
-      const fiveMinutes = 5 * 60 * 1000;
-      if (Date.now() - dismissedTime < fiveMinutes) {
+      const snoozeMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+      if (Date.now() - dismissedTime < snoozeMs) {
         console.log('Install prompt recently dismissed');
         return;
       } else {
@@ -50,11 +53,11 @@ export const InstallPrompt: React.FC = () => {
       const installEvent = e as BeforeInstallPromptEvent;
       setDeferredPrompt(installEvent);
       
-      // Show prompt immediately
+      // Show prompt with a small delay
       setTimeout(() => {
         console.log('Showing install prompt');
         setShowPrompt(true);
-      }, 1000);
+      }, 2000);
     };
 
     const handleAppInstalled = () => {
@@ -67,13 +70,13 @@ export const InstallPrompt: React.FC = () => {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
-    // Very aggressive fallback - show install option even without the event
+    // Conservative fallback - only after 30s and if not dismissed
     const fallbackTimer = setTimeout(() => {
-      if (!localStorage.getItem('pwa-install-dismissed')) {
+      if (!localStorage.getItem('pwa-install-dismissed') && !isInstalled()) {
         console.log('Showing fallback install prompt');
         setShowPrompt(true);
       }
-    }, 3000);
+    }, 30000);
 
     // Log for debugging
     console.log('InstallPrompt: Setup complete, waiting for beforeinstallprompt event');
@@ -188,7 +191,7 @@ export const InstallPrompt: React.FC = () => {
               onClick={handleDismiss}
               className="px-4 py-2.5 lyric-surface border lyric-border border-opacity-30 rounded-xl hover:lyric-highlight-bg transition-all duration-300 text-sm"
             >
-              Later
+              Later (7 days)
             </button>
           </div>
         </div>

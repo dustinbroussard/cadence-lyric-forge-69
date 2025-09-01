@@ -6,9 +6,23 @@ export function loadState<T>(key = 'cadence_state'): T | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Stored<T>;
-    if (parsed.v !== STATE_VERSION) return null;
-    return parsed.data;
+    const unknownParsed = JSON.parse(raw) as unknown;
+    if (
+      typeof unknownParsed === 'object' &&
+      unknownParsed !== null &&
+      'v' in (unknownParsed as Record<string, unknown>) &&
+      'data' in (unknownParsed as Record<string, unknown>)
+    ) {
+      const parsed = unknownParsed as Stored<T>;
+      if (parsed.v !== STATE_VERSION) {
+        // Allow migration hook to attempt conversion
+        const migrated = migrate<T>(parsed.data);
+        return migrated;
+      }
+      return parsed.data;
+    }
+    // Legacy unversioned payload; treat as data directly
+    return unknownParsed as T;
   } catch {
     return null;
   }
@@ -25,7 +39,8 @@ export function saveStateThrottled<T>(state: T, key = 'cadence_state', wait = 40
   timeout = window.setTimeout(() => {
     const run = () => saveState(state, key);
     if ('requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(run);
+      const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+      w.requestIdleCallback?.(run);
     } else {
       run();
     }
