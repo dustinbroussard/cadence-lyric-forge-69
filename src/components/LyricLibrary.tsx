@@ -348,7 +348,7 @@ ${entry.notes ? `\n---\n**Notes:**\n${entry.notes}` : ''}`;
 
 function SaveForm({ initialData, defaultTitle, onSave, onCancel }: {
   initialData?: LyricEntry | null;
-  defaultTitle?: string;
+  defaultTitle?: string | undefined;
   onSave: (data: Partial<LyricEntry>) => void;
   onCancel: () => void;
 }) {

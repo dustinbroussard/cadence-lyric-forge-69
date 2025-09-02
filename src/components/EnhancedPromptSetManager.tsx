@@ -9,14 +9,14 @@ interface EnhancedPromptSetManagerProps {
   onClose: () => void;
 }
 
-const PROMPT_LABELS = {
-  perspective: 'Establish Perspective',
-  message: 'Define the Message', 
-  tone: 'Set the Tone',
-  metaphor: 'Develop Rich Metaphor',
-  themes: 'Craft Themes & Imagery',
-  flow: 'Focus on Flow'
-};
+  const PROMPT_LABELS: Record<string, string> = {
+    perspective: 'Establish Perspective',
+    message: 'Define the Message', 
+    tone: 'Set the Tone',
+    metaphor: 'Develop Rich Metaphor',
+    themes: 'Craft Themes & Imagery',
+    flow: 'Focus on Flow'
+  };
 
 export const EnhancedPromptSetManager: React.FC<EnhancedPromptSetManagerProps> = ({
   currentPrompts,
@@ -383,11 +383,16 @@ export const EnhancedPromptSetManager: React.FC<EnhancedPromptSetManagerProps> =
                   <div key={key}>
                     <label className="block text-sm font-medium mb-1">{label}</label>
                     <textarea
-                      value={editingData.prompts?.[key] || ''}
+                      value={editingData.prompts?.[key as keyof typeof editingData.prompts] || ''}
                       onChange={(e) => setEditingData({
                         ...editingData,
                         prompts: {
-                          ...editingData.prompts,
+                          perspective: editingData.prompts?.perspective || '',
+                          message: editingData.prompts?.message || '',
+                          tone: editingData.prompts?.tone || '',
+                          metaphor: editingData.prompts?.metaphor || '',
+                          themes: editingData.prompts?.themes || '',
+                          flow: editingData.prompts?.flow || '',
                           [key]: e.target.value
                         }
                       })}

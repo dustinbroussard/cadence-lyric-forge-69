@@ -17,7 +17,7 @@ interface ModelSlatesManagerProps {
   onClose: () => void;
 }
 
-const STAGE_NAMES = {
+const STAGE_NAMES: Record<string, string> = {
   perspective: 'Establish Perspective',
   message: 'Define the Message',
   tone: 'Set the Tone',

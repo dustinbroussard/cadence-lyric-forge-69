@@ -6,7 +6,7 @@ import { getCustomSongStructures, CustomSongStructure } from '../data/customSong
 import { CustomSongStructureEditor } from './CustomSongStructureEditor';
 
 interface SongStructureSelectorProps {
-  selectedStructure?: string;
+  selectedStructure?: string | undefined;
   onStructureChange: (structureId: string) => void;
   className?: string;
 }

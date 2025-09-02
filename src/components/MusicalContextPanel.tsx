@@ -16,7 +16,7 @@ interface MusicalContextPanelProps {
   onToggle: () => void;
   selectedGenres: string[];
   onGenreToggle: (genreId: string) => void;
-  selectedStructure?: string;
+  selectedStructure?: string | undefined;
   onStructureChange: (structureId: string) => void;
   musicalSettings: MusicalSettings;
   onMusicalSettingsChange: (settings: Partial<MusicalSettings>) => void;

@@ -25,8 +25,7 @@ import { Markdown } from '@/components/Markdown';
 import { loadState, saveStateThrottled } from '@/lib/state/persistence';
 import { CRITIQUE_PROMPT } from '../data/critiquePrompts';
 
-// Default prompts for each stage - Updated stage 3 to include first draft generation
-const DEFAULT_PROMPTS = {
+const DEFAULT_PROMPTS: Record<string, string> = {
   perspective: "Based on the user's input, establish a clear narrative perspective (1st person, 3rd person, or observer). Add emotional grounding that aligns with their voice and style. Keep it concise but impactful.",
   message: "Identify the core message or theme from the established perspective. What is this really about on both literal and allegorical levels? What deeper truth is being explored?",
   tone: "Choose an emotional tone that fits the message and perspective. Consider the full spectrum: melancholic, defiant, hopeful, raw, contemplative, etc. Make it specific and vivid. Then create a FIRST DRAFT of the song with basic verses and chorus that captures this tone and the established perspective and message. This should be a complete, singable lyric even if rough.",
@@ -323,7 +322,7 @@ export default function CadenceCodex() {
 
   // Service worker registration is handled in index.html to avoid double registration
 
-  const callOpenRouter = async (prompt, context, modelOverride = null) => {
+  const callOpenRouter = async (prompt: string, context: string, modelOverride: string | null = null) => {
     if (!state.settings.apiKey) {
       throw new Error('Please configure your API key in settings');
     }
@@ -366,7 +365,7 @@ export default function CadenceCodex() {
   };
 
   // Enhanced processStage function with better output handling
-  const processStage = async (stageIndex) => {
+  const processStage = async (stageIndex: number) => {
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_INTERRUPT_REQUESTED', payload: false });
     
@@ -436,7 +435,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
         }
       }
 
-      const basePrompt = state.customPrompts[stage.id] || DEFAULT_PROMPTS[stage.id];
+      const basePrompt = state.customPrompts[stage.id as keyof typeof state.customPrompts] || (DEFAULT_PROMPTS as Record<string, string>)[stage.id];
       
       // Build context from user input and ALL previous stages
       let context = `User Input: ${state.userInput}\n\n`;
@@ -467,8 +466,8 @@ Your musical context is ready! These settings will influence the Flow stage to c
       const enhancedPrompt = buildPromptWithGenreInjection(basePrompt, promptContext);
       
       // Use stage-specific model if selected, otherwise fall back to global setting
-      const stageModel = state.stageModels[stage.id] || state.settings.selectedModel;
-      let result = await callOpenRouter(enhancedPrompt, context, stageModel);
+      const stageModel = state.stageModels[stage.id];
+      let result = await callOpenRouter(enhancedPrompt, context, stageModel || null);
       // Normalize final lyric structure for Flow stage
       if (stage.id === 'flow') {
         result = normalizeFinalLyrics(result);
@@ -483,10 +482,11 @@ Your musical context is ready! These settings will influence the Flow stage to c
       
     } catch (error) {
       console.error('Stage processing failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       dispatch({ 
         type: 'SET_STAGE_DATA', 
         stage: STAGES[stageIndex].id, 
-        payload: `Error: ${error.message}`
+        payload: `Error: ${errorMessage}`
       });
       dispatch({ type: 'AUTO_EXPAND_STAGE', payload: STAGES[stageIndex].id });
     } finally {
@@ -518,10 +518,11 @@ Your musical context is ready! These settings will influence the Flow stage to c
       
     } catch (error) {
       console.error('Critique processing failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       dispatch({ 
         type: 'SET_STAGE_DATA', 
         stage: 'critique', 
-        payload: `Error: ${error.message}`
+        payload: `Error: ${errorMessage}`
       });
       dispatch({ type: 'AUTO_EXPAND_STAGE', payload: 'critique' });
     } finally {
@@ -703,7 +704,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
     }
   };
 
-  const proceedToNextStage = (currentStageIndex) => {
+  const proceedToNextStage = (currentStageIndex: number) => {
     const nextStageIndex = currentStageIndex + 1;
     if (nextStageIndex < STAGES.length) {
       processStage(nextStageIndex);
@@ -762,9 +763,10 @@ Return only the enhanced version, no explanations.`;
       
     } catch (error) {
       console.error('Prompt enhancement failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast({
         title: "Enhancement Failed",
-        description: error.message,
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -1363,7 +1365,7 @@ Return only the enhanced version, no explanations.`;
                         </div>
                         <div className="flex space-x-1">
                           <button
-                            onClick={() => acceptMusicalSuggestions(state.musicalSuggestions)}
+                            onClick={() => state.musicalSuggestions && acceptMusicalSuggestions(state.musicalSuggestions)}
                             className="flex-1 px-2 py-1.5 lyric-accent-bg text-white rounded-lg hover:opacity-90 transition-all duration-300 font-medium text-xs"
                           >
                             Accept Settings

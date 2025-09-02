@@ -5,7 +5,7 @@ import { CRITIQUE_PROMPT, ENHANCEMENT_PROMPT } from '../data/critiquePrompts';
 
 export interface PromptContext {
   selectedGenres: string[];
-  selectedStructure?: string;
+  selectedStructure?: string | undefined;
   userInput: string;
   previousStages: { [key: string]: string };
 }
