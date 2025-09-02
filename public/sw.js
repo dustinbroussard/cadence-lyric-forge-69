@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'cadence-codex-v7';
+const CACHE_NAME = 'cadence-codex-v8';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -10,7 +10,7 @@ const urlsToCache = [
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
-  console.log('Service Worker: Installing v7');
+  console.log('Service Worker: Installing v8');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -29,7 +29,7 @@ self.addEventListener('install', (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker: Activating v7');
+  console.log('Service Worker: Activating v8');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -48,42 +48,30 @@ self.addEventListener('activate', (event) => {
 });
 
 // Fetch event - serve from cache, fallback to network
+// Stale-while-revalidate strategy for GET requests
 self.addEventListener('fetch', (event) => {
-  // Skip non-GET requests and external requests
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request)
-      .then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-
-        return fetch(event.request)
-          .then((response) => {
-            // Don't cache if not a valid response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+              cache.put(event.request, networkResponse.clone());
             }
+            return networkResponse;
+          })
+          .catch(() => cachedResponse);
 
-            // Clone the response for caching
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return response;
-          });
+        return cachedResponse || fetchPromise;
       })
-      .catch(() => {
-        // Return offline page or fallback
-        if (event.request.destination === 'document') {
-          return caches.match('/');
-        }
-      })
+    ).catch(() => {
+      if (event.request.destination === 'document') {
+        return caches.match('/');
+      }
+    })
   );
 });
