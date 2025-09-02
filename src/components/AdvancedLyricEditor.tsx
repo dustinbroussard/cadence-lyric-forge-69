@@ -4,10 +4,13 @@ import { normalizeSectionLabels } from '@/utils/lyrics';
 import { 
   X, Edit3, Music, Download, Save, Undo, Redo, Type, Palette, 
   Play, Pause, RotateCcw, Settings, Plus, Trash2, Copy, 
-  Zap, Sparkles, RefreshCw, MessageSquare, Guitar, ChevronDown
+  Zap, Sparkles, RefreshCw, MessageSquare, Guitar, ChevronDown, Menu, Minus
 } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 import { chat } from '@/lib/openrouter/client';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 
 interface LineItem { chords: string; lyric: string }
 interface LyricSection {
@@ -77,6 +80,10 @@ export function AdvancedLyricEditor({
   // Simple metadata panel state (local only for now)
   const [metaOpen, setMetaOpen] = useState(false);
   const [meta, setMeta] = useState({ key: '', tempo: 120, timeSignature: '4/4', tags: '' as string, notes: '' });
+  
+  // Collapsible sections state
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [hideChords, setHideChords] = useState(false);
 
   useEffect(() => {
     if (initialLyrics) {
@@ -564,403 +571,369 @@ export function AdvancedLyricEditor({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex">
-      <div className="flex-1 flex flex-col lyric-surface m-4 rounded-xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b lyric-border border-opacity-30">
-          <div className="flex items-center space-x-4 flex-1">
-            <h2 className="text-lg font-bold lyric-accent">Advanced Lyric Editor</h2>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="flex-1 max-w-md p-2 text-sm rounded-lg lyric-bg-secondary border lyric-border border-opacity-30 focus:ring-2 focus:ring-opacity-50 lyric-highlight"
-              placeholder="Song title..."
-            />
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={undo}
-              disabled={undoStack.length === 0}
-              className="p-2 rounded-lg lyric-surface hover:lyric-highlight-bg transition-colors disabled:opacity-50"
-              title="Undo"
-            >
-              <Undo size={16} />
-            </button>
-            <button
-              onClick={redo}
-              disabled={redoStack.length === 0}
-              className="p-2 rounded-lg lyric-surface hover:lyric-highlight-bg transition-colors disabled:opacity-50"
-              title="Redo"
-            >
-              <Redo size={16} />
-            </button>
-            <button
-              onClick={openAiTools}
-              className="p-2 rounded-lg lyric-surface hover:lyric-highlight-bg transition-colors"
-              title="AI Tools"
-            >
-              <Sparkles size={16} />
-            </button>
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="p-2 rounded-lg lyric-surface hover:lyric-highlight-bg transition-colors"
-              title="Settings"
-            >
-              <Settings size={16} />
-            </button>
-            <button
-              onClick={addSection}
-              className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-              title="Add Section"
-            >
-              <Plus size={16} />
-            </button>
-            <button
-              onClick={() => setShowCopyModal(true)}
-              className="p-2 rounded-lg lyric-surface hover:lyric-highlight-bg transition-colors"
-              title="Copy All"
-            >
-              <Copy size={16} />
-            </button>
-            <button
-              onClick={exportLyrics}
-              className="p-2 rounded-lg lyric-surface hover:lyric-highlight-bg transition-colors"
-              title="Export"
-            >
-              <Download size={16} />
-            </button>
-            {onSave && (
-              <button
-                onClick={() => onSave(title, getAllLyrics())}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-              >
-                Save
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg lyric-surface hover:lyric-highlight-bg transition-colors"
-            >
-              <X size={16} />
-            </button>
-          </div>
+    <div className="fixed inset-0 bg-background z-50 flex flex-col">
+      {/* Mobile-Style Header */}
+      <div className="flex items-center justify-between p-4 bg-muted border-b">
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold">{title || 'Untitled Song'}</h1>
+          <span className="text-sm text-muted-foreground">
+            {new Date().toLocaleDateString()}
+          </span>
         </div>
-
-        {/* Settings Panel */}
-        {showSettings && (
-          <div className="p-4 border-b lyric-border border-opacity-30 lyric-bg-secondary">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Font Size</label>
-                <input
-                  type="range"
-                  min="12"
-                  max="24"
-                  value={settings.fontSize}
-                  onChange={(e) => setSettings(prev => ({ ...prev, fontSize: parseInt(e.target.value) }))}
-                  className="w-full"
-                />
-                <span className="text-xs">{settings.fontSize}px</span>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">Line Height</label>
-                <input
-                  type="range"
-                  min="1.2"
-                  max="2.0"
-                  step="0.1"
-                  value={settings.lineHeight}
-                  onChange={(e) => setSettings(prev => ({ ...prev, lineHeight: parseFloat(e.target.value) }))}
-                  className="w-full"
-                />
-                <span className="text-xs">{settings.lineHeight}</span>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="showChords"
-                  checked={settings.showChords}
-                  onChange={(e) => setSettings(prev => ({ ...prev, showChords: e.target.checked }))}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="showChords" className="text-sm">Show Chords</label>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="rhymeHighlight"
-                  checked={settings.rhymeHighlight}
-                  onChange={(e) => setSettings(prev => ({ ...prev, rhymeHighlight: e.target.checked }))}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="rhymeHighlight" className="text-sm">Rhyme Colors</label>
-              </div>
-              <button
-                onClick={() => setMetaOpen(true)}
-                className="px-3 py-2 rounded-md lyric-surface hover:lyric-highlight-bg text-left text-sm"
-                title="Song Metadata"
-              >
-                Song Metadata
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Editor Area */}
-        <div 
-          className="flex-1 p-4 overflow-y-auto"
-          style={{ 
-            fontSize: `${settings.fontSize}px`,
-            lineHeight: settings.lineHeight,
-            fontFamily: settings.fontFamily === 'monospace' ? 'Monaco, Consolas, monospace' : 'inherit'
-          }}
-          ref={editorRef}
-          onMouseUp={handleTextSelection}
-          onKeyUp={handleTextSelection}
-        >
-          <div className="space-y-6">
-            {sections.map((section, si) => (
-              <div key={section.id} className="lyric-bg-secondary rounded-lg p-4 border lyric-border border-opacity-30">
-                <div className="flex items-center justify-between mb-3">
-                  <input
-                    type="text"
-                    value={section.label}
-                    disabled={readOnly}
-                    onChange={(e) => updateSectionLabel(section.id, e.target.value)}
-                    className="font-semibold text-lg lyric-accent bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-opacity-50 lyric-highlight rounded px-2 py-1"
-                  />
-                  <div className="flex items-center gap-1">
-                    <button className="p-1 rounded lyric-surface hover:lyric-highlight-bg" title="Move Up" onClick={() => moveSection(section.id, -1)}><ChevronDown className="rotate-180" size={14} /></button>
-                    <button className="p-1 rounded lyric-surface hover:lyric-highlight-bg" title="Move Down" onClick={() => moveSection(section.id, 1)}><ChevronDown size={14} /></button>
-                    <button
-                      onClick={() => deleteSection(section.id)}
-                      className="p-1 rounded text-red-500 hover:bg-red-500 hover:text-white transition-colors"
-                      title="Delete Section"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {section.lines.map((ln, li) => {
-                    const id = `${si}:${li}`;
-                    // Measure target (rough): top * 2 syllables
-                    let target = 8;
-                    const top = parseInt(String(meta.timeSignature || '4/4').split('/')[0] || '4', 10);
-                    if (!isNaN(top) && top > 0) target = top * 2;
-                    const syllables = ln.lyric.split(/\s+/).filter(Boolean).reduce((a, w) => a + syllableCount(w), 0);
-                    const delta = Math.abs(syllables - target);
-                    const badgeColor = delta <= 2 ? 'bg-green-600' : delta <= 4 ? 'bg-yellow-600' : 'bg-red-600';
-                    return (
-                      <div key={id} className="flex flex-col">
-                        {settings.showChords && (
-                          <input
-                            disabled={readOnly}
-                            value={ln.chords}
-                            onChange={(e) => updateLine(section.id, li, 'chords', e.target.value)}
-                            className="w-full p-2 text-sm rounded lyric-bg-primary border lyric-border border-opacity-30 font-mono"
-                            placeholder="C   F   Am   G"
-                          />
-                        )}
-                        <div className="flex items-center gap-2">
-                          {measureMode && (
-                            <span className={`text-xs text-white px-2 py-1 rounded ${badgeColor}`}>{String(syllables).padStart(2,' ')}</span>
-                          )}
-                          <input
-                            disabled={readOnly}
-                            value={ln.lyric}
-                            onChange={(e) => updateLine(section.id, li, 'lyric', e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addLineAfter(section.id, li); } }}
-                            className={`flex-1 p-3 rounded lyric-bg-primary border lyric-border border-opacity-30 ${settings.rhymeHighlight && rhymeClasses[id] ? rhymeClasses[id] : ''}`}
-                            placeholder="Enter lyric..."
-                          />
-                          <button className="p-2 rounded lyric-surface hover:lyric-highlight-bg" title="Add line" onClick={() => addLineAfter(section.id, li)}><Plus size={14} /></button>
-                          <button className="p-2 rounded lyric-surface hover:lyric-highlight-bg text-red-500" title="Delete line" onClick={() => deleteLine(section.id, li)}><Trash2 size={14} /></button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* AI Context Menu */}
-        {showAIMenu && selectedText && (
-          <div
-            className="fixed bg-gray-900 border border-gray-700 rounded-lg shadow-lg z-50 flex items-center space-x-1 p-2"
-            style={{
-              left: aiMenuPosition.x,
-              top: aiMenuPosition.y
-            }}
+        
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={() => setShowSettings(!showSettings)}
+            title="Settings"
           >
-            <button
-              onClick={() => handleAIAction('rhyme')}
-              disabled={isProcessing}
-              className="p-2 rounded hover:bg-gray-700 transition-colors text-blue-400"
-              title="Find Rhymes"
-            >
-              <Zap size={14} />
-            </button>
-            <button
-              onClick={() => handleAIAction('reword')}
-              disabled={isProcessing}
-              className="p-2 rounded hover:bg-gray-700 transition-colors text-green-400"
-              title="Reword"
-            >
-              <RefreshCw size={14} />
-            </button>
-            <button
-              onClick={() => handleAIAction('continue')}
-              disabled={isProcessing}
-              className="p-2 rounded hover:bg-gray-700 transition-colors text-purple-400"
-              title="Continue"
-            >
-              <Sparkles size={14} />
-            </button>
-            <button
-              onClick={() => handleAIAction('polish')}
-              disabled={isProcessing}
-              className="p-2 rounded hover:bg-gray-700 transition-colors text-yellow-400"
-              title="Polish"
-            >
-              <Edit3 size={14} />
-            </button>
-            <button
-              onClick={() => setShowAIMenu(false)}
-              className="p-2 rounded hover:bg-gray-700 transition-colors text-gray-400"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
-        {/* Processing Overlay */}
-        {isProcessing && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40">
-            <div className="lyric-surface rounded-lg p-6 text-center">
-              <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-3"></div>
-              <p>AI is processing...</p>
-            </div>
-          </div>
-        )}
-
-        {/* Settings additions: Measure + Read-only toggles */}
-        {showSettings && (
-          <div className="p-4 border-t lyric-border border-opacity-30 lyric-bg-secondary">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="flex items-center space-x-2">
-                <input type="checkbox" id="measureMode" checked={measureMode} onChange={(e) => setMeasureMode(e.target.checked)} className="w-4 h-4" />
-                <label htmlFor="measureMode" className="text-sm">Measure Mode</label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <input type="checkbox" id="readOnly" checked={readOnly} onChange={(e) => setReadOnly(e.target.checked)} className="w-4 h-4" />
-                <label htmlFor="readOnly" className="text-sm">Performance Mode</label>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Copy Options Modal */}
-        {showCopyModal && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]" onClick={() => setShowCopyModal(false)}>
-            <div className="lyric-surface w-[320px] max-w-[94vw] p-4" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-semibold mb-3">Copy Options</h3>
-              <div className="grid gap-2">
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={async () => { await navigator.clipboard.writeText(getAllLyrics()); setShowCopyModal(false); toast({ title: 'Copied raw lyrics' }); }}>Raw Lyrics</button>
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={async () => {
-                  const text = sections.map(s => `${s.label}\n${s.lines.map(ln => ln.chords ? `${ln.chords}\n${ln.lyric}` : ln.lyric).join('\n')}`).join('\n\n');
-                  await navigator.clipboard.writeText(text); setShowCopyModal(false); toast({ title: 'Copied lyrics + chords' });
-                }}>Lyrics + Chords</button>
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={async () => { await navigator.clipboard.writeText(buildSongMarkdown()); setShowCopyModal(false); toast({ title: 'Copied full song' }); }}>Full Song (Markdown)</button>
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={async () => {
-                  const metaText = `${title || 'Untitled'}\nKey: ${meta.key || 'N/A'}\nTempo: ${meta.tempo} BPM\nTime: ${meta.timeSignature}\nTags: ${meta.tags || 'None'}`;
-                  await navigator.clipboard.writeText(metaText); setShowCopyModal(false); toast({ title: 'Copied metadata' });
-                }}>Metadata Only</button>
-                <button className="modal-action-btn bg-gray-700 text-white px-3 py-2 rounded" onClick={() => setShowCopyModal(false)}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* AI Tools Modal */}
-        {showAiTools && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]" onClick={closeAiTools}>
-            <div className="lyric-surface w-[360px] max-w-[95vw] p-4" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-semibold mb-3">AI Tools</h3>
-              <div className="grid gap-2">
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={() => runAiTool('firstDraft')}>Generate First Draft</button>
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={() => runAiTool('polish')}>Polish Lyrics</button>
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={() => { const style = prompt('Rewrite in which style?'); if (style) runAiTool('rewriteStyle', style); }}>Rewrite in Style</button>
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={() => runAiTool('continue')}>Continue Song</button>
-                <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={() => runAiTool('suggestChords')}>Suggest Chords</button>
-                <button className="modal-action-btn bg-gray-700 text-white px-3 py-2 rounded" onClick={closeAiTools}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* AI Review Modal */}
-        {showReview && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70]" onClick={rejectAI}>
-            <div className="lyric-surface w-[520px] max-w-[95vw] p-4" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-semibold mb-3">AI Suggestion</h3>
-              <pre className="bg-black/30 border border-white/10 rounded p-3 max-h-[45vh] overflow-auto whitespace-pre-wrap text-sm">{reviewText}</pre>
-              <div className="flex gap-2 justify-end mt-3">
-                <button className="px-3 py-2 rounded bg-green-600 hover:bg-green-700 text-white" onClick={acceptAI}>Accept</button>
-                <button className="px-3 py-2 rounded bg-gray-600 hover:bg-gray-700 text-white" onClick={rejectAI}>Reject</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Metadata Panel */}
-        {metaOpen && (
-          <div className="fixed inset-0 z-[65]" onClick={() => setMetaOpen(false)}>
-            <div className="absolute inset-0 bg-black/50" />
-            <div className="absolute right-0 top-0 h-full w-[360px] max-w-[95vw] lyric-surface p-4 border-l lyric-border" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Song Information</h3>
-                <button className="p-2 rounded lyric-surface hover:lyric-highlight-bg" onClick={() => setMetaOpen(false)} title="Close"><X size={16} /></button>
-              </div>
-              <div className="mt-3 space-y-3 text-sm">
-                <div>
-                  <label className="block mb-1">Title</label>
-                  <input className="w-full p-2 rounded lyric-bg-primary border lyric-border" value={title} onChange={(e) => setTitle(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block mb-1">Key</label>
-                  <input className="w-full p-2 rounded lyric-bg-primary border lyric-border" value={meta.key} onChange={(e) => setMeta(m => ({ ...m, key: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="block mb-1">Tempo (BPM)</label>
-                  <input type="number" className="w-full p-2 rounded lyric-bg-primary border lyric-border" value={meta.tempo} onChange={(e) => setMeta(m => ({ ...m, tempo: parseInt(e.target.value || '120', 10) }))} />
-                </div>
-                <div>
-                  <label className="block mb-1">Time Signature</label>
-                  <input className="w-full p-2 rounded lyric-bg-primary border lyric-border" value={meta.timeSignature} onChange={(e) => setMeta(m => ({ ...m, timeSignature: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="block mb-1">Tags (comma-separated)</label>
-                  <input className="w-full p-2 rounded lyric-bg-primary border lyric-border" value={meta.tags} onChange={(e) => setMeta(m => ({ ...m, tags: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="block mb-1">Performance Notes</label>
-                  <textarea rows={4} className="w-full p-2 rounded lyric-bg-primary border lyric-border" value={meta.notes} onChange={(e) => setMeta(m => ({ ...m, notes: e.target.value }))} />
-                </div>
-                <button className="w-full px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white" onClick={() => { setMetaOpen(false); toast({ title: 'Metadata saved' }); }}>Close</button>
-              </div>
-            </div>
-          </div>
-        )}
+            <Settings className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={addSection}
+            title="Add Section"
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={openAiTools}
+            title="AI Tools"
+          >
+            <Sparkles className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={() => setMetaOpen(true)}
+            title="Song Info"
+          >
+            <Music className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={onClose}
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
-    </div>
-  );
-}
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="p-4 bg-muted border-b">
+          <div className="flex items-center justify-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setHideChords(!hideChords)}
+            >
+              <Guitar className="w-4 h-4 mr-1" />
+              {hideChords ? 'Show' : 'Hide'} Chords
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setReadOnly(!readOnly)}
+            >
+              {readOnly ? <Edit3 className="w-4 h-4 mr-1" /> : <Save className="w-4 h-4 mr-1" />}
+              {readOnly ? 'Edit' : 'Performance'} Mode
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSettings(prev => ({ ...prev, rhymeHighlight: !prev.rhymeHighlight }))}
+            >
+              <Palette className="w-4 h-4 mr-1" />
+              Rhyme Colors
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Editor Area */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="space-y-1">
+          {sections.map((section, sectionIndex) => {
+            let globalLineCounter = sections
+              .slice(0, sectionIndex)
+              .reduce((acc, s) => acc + s.lines.length, 0);
+            
+            return (
+              <div key={section.id} className="border-b border-border">
+                <div 
+                  className="flex items-center justify-between p-3 bg-muted/50 cursor-pointer hover:bg-muted/70 transition-colors"
+                  onClick={() => {
+                    const newCollapsed = { ...collapsedSections };
+                    newCollapsed[section.id] = !newCollapsed[section.id];
+                    setCollapsedSections(newCollapsed);
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-6 w-6"
+                    >
+                      <Menu className="w-4 h-4" />
+                    </Button>
+                    <Input
+                      value={section.label}
+                      onChange={(e) => updateSectionLabel(section.id, e.target.value)}
+                      className="font-medium text-foreground bg-transparent border-none p-0 h-auto focus-visible:ring-0"
+                      disabled={readOnly}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="p-1 h-6 w-6"
+                  >
+                    <ChevronDown className={`w-4 h-4 transition-transform ${
+                      collapsedSections[section.id] ? '-rotate-90' : 'rotate-0'
+                    }`} />
+                  </Button>
+                </div>
+
+                {!collapsedSections[section.id] && (
+                  <div className="px-3 pb-3 space-y-2">
+                    {section.lines.map((line, lineIndex) => {
+                      globalLineCounter++;
+                      return (
+                        <div key={lineIndex} className="flex gap-3 items-start">
+                          <div className="w-8 text-xs text-muted-foreground pt-2 text-right shrink-0">
+                            {globalLineCounter}
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            {!hideChords && settings.showChords && (
+                              <div className="text-sm font-mono text-primary">
+                                <Input
+                                  value={line.chords}
+                                  onChange={(e) => updateLine(section.id, lineIndex, 'chords', e.target.value)}
+                                  placeholder=""
+                                  disabled={readOnly}
+                                  className="border-none bg-transparent p-0 h-auto font-mono text-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+                                />
+                              </div>
+                            )}
+                            <div className="text-base">
+                              <Input
+                                value={line.lyric}
+                                onChange={(e) => updateLine(section.id, lineIndex, 'lyric', e.target.value)}
+                                placeholder="Enter lyrics..."
+                                disabled={readOnly}
+                                className="border-none bg-transparent p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    addLineAfter(section.id, lineIndex);
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    <div className="flex justify-center pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => addLineAfter(section.id, section.lines.length - 1)}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                        disabled={readOnly}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Add Line
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Font Size Controls - Mobile Style */}
+      <div className="flex items-center justify-center p-4 bg-muted border-t">
+        <div className="flex items-center gap-4 bg-primary/10 rounded-full px-4 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-full w-8 h-8 p-0"
+            onClick={() => setSettings(prev => ({ 
+              ...prev, 
+              fontSize: Math.max(12, prev.fontSize - 1) 
+            }))}
+          >
+            <Minus className="w-4 h-4" />
+          </Button>
+          <span className="text-sm font-medium min-w-[3rem] text-center">
+            {Math.round((settings.fontSize / 16) * 100)}%
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rounded-full w-8 h-8 p-0"
+            onClick={() => setSettings(prev => ({ 
+              ...prev, 
+              fontSize: Math.min(24, prev.fontSize + 1) 
+            }))}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+         {/* AI Context Menu */}
+         {showAIMenu && selectedText && (
+           <div
+             className="fixed bg-gray-900 border border-gray-700 rounded-lg shadow-lg z-50 flex items-center space-x-1 p-2"
+             style={{
+               left: aiMenuPosition.x,
+               top: aiMenuPosition.y
+             }}
+           >
+             <button
+               onClick={() => handleAIAction('rhyme')}
+               disabled={isProcessing}
+               className="p-2 rounded hover:bg-gray-700 transition-colors text-blue-400"
+               title="Find Rhymes"
+             >
+               <Zap size={14} />
+             </button>
+             <button
+               onClick={() => handleAIAction('reword')}
+               disabled={isProcessing}
+               className="p-2 rounded hover:bg-gray-700 transition-colors text-green-400"
+               title="Reword"
+             >
+               <RefreshCw size={14} />
+             </button>
+             <button
+               onClick={() => handleAIAction('continue')}
+               disabled={isProcessing}
+               className="p-2 rounded hover:bg-gray-700 transition-colors text-purple-400"
+               title="Continue"
+             >
+               <Sparkles size={14} />
+             </button>
+             <button
+               onClick={() => handleAIAction('polish')}
+               disabled={isProcessing}
+               className="p-2 rounded hover:bg-gray-700 transition-colors text-yellow-400"
+               title="Polish"
+             >
+               <Edit3 size={14} />
+             </button>
+             <button
+               onClick={() => setShowAIMenu(false)}
+               className="p-2 rounded hover:bg-gray-700 transition-colors text-gray-400"
+             >
+               <X size={14} />
+             </button>
+           </div>
+         )}
+
+         {/* AI Tools Modal */}
+         {showAiTools && (
+           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]" onClick={closeAiTools}>
+             <div className="bg-background w-[360px] max-w-[95vw] p-4 rounded-lg" onClick={(e) => e.stopPropagation()}>
+               <h3 className="font-semibold mb-3">AI Tools</h3>
+               <div className="grid gap-2">
+                 <Button className="w-full" onClick={() => runAiTool('firstDraft')}>Generate First Draft</Button>
+                 <Button className="w-full" onClick={() => runAiTool('polish')}>Polish Lyrics</Button>
+                 <Button className="w-full" onClick={() => runAiTool('continue')}>Continue Song</Button>
+                 <Button className="w-full" onClick={() => runAiTool('suggestChords')}>Suggest Chords</Button>
+               </div>
+               <Button variant="outline" className="w-full mt-2" onClick={closeAiTools}>Cancel</Button>
+             </div>
+           </div>
+         )}
+
+         {/* AI Review Modal */}
+         {showReview && (
+           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70]">
+             <div className="bg-background w-[520px] max-w-[95vw] p-4 rounded-lg">
+               <h3 className="font-semibold mb-3">AI Suggestion</h3>
+               <Textarea
+                 value={reviewText}
+                 onChange={(e) => setReviewText(e.target.value)}
+                 rows={10}
+                 className="w-full mb-3 font-mono text-sm"
+               />
+               <div className="flex gap-2 justify-end">
+                 <Button onClick={acceptAI}>Accept</Button>
+                 <Button variant="outline" onClick={rejectAI}>Reject</Button>
+               </div>
+             </div>
+           </div>
+         )}
+
+         {/* Metadata Panel */}
+         {metaOpen && (
+           <div className="fixed inset-0 z-[65]" onClick={() => setMetaOpen(false)}>
+             <div className="absolute inset-0 bg-black/50" />
+             <div className="absolute right-0 top-0 h-full w-[360px] max-w-[95vw] bg-background p-4 border-l border-border" onClick={(e) => e.stopPropagation()}>
+               <div className="flex items-center justify-between mb-4">
+                 <h3 className="font-semibold">Song Information</h3>
+                 <Button variant="ghost" size="sm" onClick={() => setMetaOpen(false)}>
+                   <X className="w-4 h-4" />
+                 </Button>
+               </div>
+               <div className="space-y-3">
+                 <div>
+                   <label className="block text-sm font-medium mb-1">Title</label>
+                   <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium mb-1">Key</label>
+                   <Input value={meta.key} onChange={(e) => setMeta(m => ({ ...m, key: e.target.value }))} />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium mb-1">Tempo (BPM)</label>
+                   <Input type="number" value={meta.tempo} onChange={(e) => setMeta(m => ({ ...m, tempo: parseInt(e.target.value || '120', 10) }))} />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium mb-1">Time Signature</label>
+                   <Input value={meta.timeSignature} onChange={(e) => setMeta(m => ({ ...m, timeSignature: e.target.value }))} />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium mb-1">Tags</label>
+                   <Input value={meta.tags} onChange={(e) => setMeta(m => ({ ...m, tags: e.target.value }))} placeholder="rock, ballad, easy" />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium mb-1">Performance Notes</label>
+                   <Textarea rows={4} value={meta.notes} onChange={(e) => setMeta(m => ({ ...m, notes: e.target.value }))} />
+                 </div>
+               </div>
+             </div>
+           </div>
+         )}
+
+         {/* Processing Overlay */}
+         {isProcessing && (
+           <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40">
+             <div className="bg-background rounded-lg p-6 text-center">
+               <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-3"></div>
+               <p>AI is processing...</p>
+             </div>
+           </div>
+         )}
+       </div>
+     );
+   }
