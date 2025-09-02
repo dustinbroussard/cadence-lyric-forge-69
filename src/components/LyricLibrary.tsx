@@ -328,11 +328,11 @@ ${entry.notes ? `\n---\n**Notes:**\n${entry.notes}` : ''}`;
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60">
             <div className="lyric-surface p-6 w-full max-w-md rounded-xl" role="dialog" aria-modal="true">
               <h3 className="font-bold text-lg mb-4">{editingEntry ? 'Edit Entry' : 'Save to Library'}</h3>
-              <SaveForm
-                initialData={editingEntry}
-                defaultTitle={currentTitle}
-                onSave={saveLyrics}
-                onCancel={() => {
+               <SaveForm
+                 initialData={editingEntry}
+                 defaultTitle={currentTitle || undefined}
+                 onSave={saveLyrics}
+                 onCancel={() => {
                   setShowSaveDialog(false);
                   setEditingEntry(null);
                 }}

@@ -33,7 +33,7 @@ export async function chat({ model, messages, signal, apiKey }: ChatOptions): Pr
   if (!key) throw new Error('Missing OpenRouter API key');
 
   return withBackoff(async () => {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const requestInit: RequestInit = {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
@@ -42,9 +42,14 @@ export async function chat({ model, messages, signal, apiKey }: ChatOptions): Pr
         'HTTP-Referer': location.origin,
         'X-Title': 'Cadence Lyric Forge'
       },
-      body: JSON.stringify({ model, messages }),
-      signal
-    });
+      body: JSON.stringify({ model, messages })
+    };
+    
+    if (signal) {
+      requestInit.signal = signal;
+    }
+    
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', requestInit);
     if (!res.ok) {
       throw new Error(`OpenRouter error ${res.status}`);
     }

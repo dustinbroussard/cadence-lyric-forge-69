@@ -4,7 +4,7 @@ import { normalizeSectionLabels } from '@/utils/lyrics';
 import { 
   X, Edit3, Music, Download, Save, Undo, Redo, Type, Palette, 
   Play, Pause, RotateCcw, Settings, Plus, Trash2, Copy, 
-  Zap, Sparkles, RefreshCw, MessageSquare, Guitar
+  Zap, Sparkles, RefreshCw, MessageSquare, Guitar, ChevronDown
 } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 import { chat } from '@/lib/openrouter/client';
@@ -300,8 +300,15 @@ export function AdvancedLyricEditor({
       // Replace selected text with AI result
       const section = sections.find(s => s.id === currentSectionId);
       if (section) {
-        const newLyrics = section.lyrics.replace(selectedText, result.trim());
-        updateSection(currentSectionId, 'lyrics', newLyrics);
+        const allLyrics = section.lines.map(ln => ln.lyric).join('\n');
+        const newLyrics = allLyrics.replace(selectedText, result.trim());
+        const newLines = newLyrics.split('\n').map((lyric, i) => ({
+          chords: section.lines[i]?.chords || '',
+          lyric
+        }));
+        setSections(prev => prev.map(s => 
+          s.id === currentSectionId ? { ...s, lines: newLines } : s
+        ));
       }
     }
     
@@ -515,15 +522,12 @@ export function AdvancedLyricEditor({
       const newSections = sections.map((sec) => {
         const match = parsed.find(p => p.label.trim().toLowerCase() === sec.label.trim().toLowerCase()) || parsed[0];
         if (!match) return sec;
-        const lyricLines = (sec.lyrics || '').split('\n');
-        const chordsOut: string[] = [];
-        let idx = 0;
-        for (const l of lyricLines) {
-          if (isSectionLabel(l)) { chordsOut.push(''); continue; }
-          chordsOut.push(match.chords[idx] || '');
-          if (typeof match.chords[idx] !== 'undefined') idx++;
-        }
-        return { ...sec, chords: chordsOut.join('\n') };
+        const currentLyrics = sec.lines.map(ln => ln.lyric);
+        const newLines = currentLyrics.map((lyric, i) => ({
+          lyric,
+          chords: match.chords[i] || ''
+        }));
+        return { ...sec, lines: newLines };
       });
       setSections(newSections);
     } else if (pendingAction === 'continue') {
@@ -532,8 +536,7 @@ export function AdvancedLyricEditor({
       const appendSections = parsed.map(p => ({
         id: (Math.max(...sections.map(s => parseInt(s.id) || 0)) + Math.floor(Math.random()*100+1)).toString(),
         label: p.label,
-        lyrics: p.lyrics.join('\n'),
-        chords: p.chords.join('\n')
+        lines: p.lyrics.map((lyric, i) => ({ lyric, chords: p.chords[i] || '' }))
       }));
       setSections(prev => [...prev, ...appendSections]);
     } else {
@@ -542,8 +545,7 @@ export function AdvancedLyricEditor({
       const replaced = parsed.map((p, i) => ({
         id: (i + 1).toString(),
         label: p.label,
-        lyrics: p.lyrics.join('\n'),
-        chords: p.chords.join('\n')
+        lines: p.lyrics.map((lyric, j) => ({ lyric, chords: p.chords[j] || '' }))
       }));
       setSections(replaced.length ? replaced : sections);
     }
@@ -874,7 +876,7 @@ export function AdvancedLyricEditor({
               <div className="grid gap-2">
                 <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={async () => { await navigator.clipboard.writeText(getAllLyrics()); setShowCopyModal(false); toast({ title: 'Copied raw lyrics' }); }}>Raw Lyrics</button>
                 <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={async () => {
-                  const text = sections.map(s => `${s.label}\n${formatLyricsWithChords(s.lyrics, s.chords)}`).join('\n\n');
+                  const text = sections.map(s => `${s.label}\n${s.lines.map(ln => ln.chords ? `${ln.chords}\n${ln.lyric}` : ln.lyric).join('\n')}`).join('\n\n');
                   await navigator.clipboard.writeText(text); setShowCopyModal(false); toast({ title: 'Copied lyrics + chords' });
                 }}>Lyrics + Chords</button>
                 <button className="modal-action-btn bg-blue-600 text-white px-3 py-2 rounded" onClick={async () => { await navigator.clipboard.writeText(buildSongMarkdown()); setShowCopyModal(false); toast({ title: 'Copied full song' }); }}>Full Song (Markdown)</button>
