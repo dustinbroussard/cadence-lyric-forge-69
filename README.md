@@ -77,3 +77,22 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+
+## Progressive Web App
+
+Cadence Codex is built as a Progressive Web App (PWA) with offline caching and a custom install banner.
+
+### Testing installability
+
+1. `npm run dev` and open the site in Chrome.
+2. Open **DevTools → Application → Manifest** to verify the manifest fields.
+3. Check **Application → Service Workers** to confirm the service worker is active.
+4. Run a **Lighthouse → Progressive Web App** audit.
+
+### Generate an Android APK
+
+1. `npm install -g @bubblewrap/cli`
+2. `bubblewrap init --manifest https://your-domain.com/manifest.webmanifest`
+3. `bubblewrap build`
+
+See `PWA-SETUP.md` for more details and options.

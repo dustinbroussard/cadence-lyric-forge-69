@@ -2,6 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { Download, X, Smartphone } from 'lucide-react';
 
+// Change this value to control how often the prompt is shown.
+// 0 = every new session, 1 = daily, 7 = weekly, etc.
+const PROMPT_FREQUENCY_DAYS = 0;
+
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
   readonly userChoice: Promise<{
@@ -16,6 +20,8 @@ export const InstallPrompt: React.FC = () => {
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
+    const storage = PROMPT_FREQUENCY_DAYS > 0 ? localStorage : sessionStorage;
+
     // Check if already installed
     const isInstalled = () => {
       const nav = window.navigator as Navigator & { standalone?: boolean };
@@ -33,17 +39,18 @@ export const InstallPrompt: React.FC = () => {
       return;
     }
 
-    // Check if dismissed recently (snooze for 7 days)
-    const dismissed = localStorage.getItem('pwa-install-dismissed');
+    const dismissed = storage.getItem('pwa-install-dismissed');
     if (dismissed) {
-      const dismissedTime = parseInt(dismissed);
-      const snoozeMs = 7 * 24 * 60 * 60 * 1000; // 7 days
-      if (Date.now() - dismissedTime < snoozeMs) {
-        console.log('Install prompt recently dismissed');
-        return;
+      if (PROMPT_FREQUENCY_DAYS > 0) {
+        const resumeTime = parseInt(dismissed);
+        if (Date.now() < resumeTime) {
+          console.log('Install prompt snoozed');
+          return;
+        }
+        storage.removeItem('pwa-install-dismissed');
       } else {
-        // Clear old dismissal
-        localStorage.removeItem('pwa-install-dismissed');
+        console.log('Install prompt dismissed this session');
+        return;
       }
     }
 
@@ -64,7 +71,7 @@ export const InstallPrompt: React.FC = () => {
       console.log('PWA installed successfully');
       setDeferredPrompt(null);
       setShowPrompt(false);
-      localStorage.removeItem('pwa-install-dismissed');
+      storage.setItem('pwa-install-dismissed', 'true');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -72,7 +79,7 @@ export const InstallPrompt: React.FC = () => {
 
     // Conservative fallback - only after 30s and if not dismissed
     const fallbackTimer = setTimeout(() => {
-      if (!localStorage.getItem('pwa-install-dismissed') && !isInstalled()) {
+      if (!storage.getItem('pwa-install-dismissed') && !isInstalled()) {
         console.log('Showing fallback install prompt');
         setShowPrompt(true);
       }
@@ -90,7 +97,7 @@ export const InstallPrompt: React.FC = () => {
 
   const handleInstall = async () => {
     console.log('Install button clicked');
-    
+
     if (deferredPrompt) {
       try {
         console.log('Triggering native install prompt');
@@ -144,7 +151,13 @@ export const InstallPrompt: React.FC = () => {
   const handleDismiss = () => {
     console.log('Install prompt dismissed by user');
     setShowPrompt(false);
-    localStorage.setItem('pwa-install-dismissed', Date.now().toString());
+    const storage = PROMPT_FREQUENCY_DAYS > 0 ? localStorage : sessionStorage;
+    if (PROMPT_FREQUENCY_DAYS > 0) {
+      const resume = Date.now() + PROMPT_FREQUENCY_DAYS * 24 * 60 * 60 * 1000;
+      storage.setItem('pwa-install-dismissed', resume.toString());
+    } else {
+      storage.setItem('pwa-install-dismissed', 'true');
+    }
   };
 
   if (!showPrompt) {
@@ -191,7 +204,7 @@ export const InstallPrompt: React.FC = () => {
               onClick={handleDismiss}
               className="px-4 py-2.5 lyric-surface border lyric-border border-opacity-30 rounded-xl hover:lyric-highlight-bg transition-all duration-300 text-sm"
             >
-              Later (7 days)
+              Later
             </button>
           </div>
         </div>
