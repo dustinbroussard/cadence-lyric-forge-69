@@ -49,7 +49,6 @@ interface EditorSettings {
   fontFamily: string;
   lineHeight: number;
   showChords: boolean;
-  showLineNumbers: boolean;
   rhymeHighlight: boolean;
   darkMode: boolean;
   autoSave: boolean;
@@ -81,7 +80,6 @@ export function AdvancedLyricEditor({
     fontFamily: 'monospace',
     lineHeight: 1.6,
     showChords: true,
-    showLineNumbers: false,
     rhymeHighlight: false,
     darkMode: true,
     autoSave: true
@@ -470,7 +468,7 @@ export function AdvancedLyricEditor({
     return out;
   };
 
-  const [measureMode, setMeasureMode] = useState(true);
+  const [showSyllables, setShowSyllables] = useState(true);
   const [readOnly, setReadOnly] = useState(false);
   const rhymeClasses = settings.rhymeHighlight ? computeRhymeClasses(sections) : {};
 
@@ -772,10 +770,10 @@ export function AdvancedLyricEditor({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setMeasureMode(!measureMode)}
+              onClick={() => setShowSyllables(!showSyllables)}
             >
               <Type className="w-4 h-4 mr-1" />
-              {measureMode ? 'Hide' : 'Show'} Syllables
+              {showSyllables ? 'Hide' : 'Show'} Syllables
             </Button>
           </div>
         </div>
@@ -868,9 +866,9 @@ export function AdvancedLyricEditor({
                   <div className="px-3 pb-3 space-y-2">
                     {section.lines.map((line, lineIndex) => (
                       <div key={lineIndex} className="flex gap-3 items-start">
-                        {measureMode && (
-                          <div className="w-10 text-xs text-muted-foreground pt-2 text-right shrink-0">
-                            {lineSyllableCount(line.lyric)}
+                        {showSyllables && (
+                          <div className="w-10 text-xs text-muted-foreground pt-2 text-right shrink-0 tabular-nums">
+                            {line.lyric.trim() ? lineSyllableCount(line.lyric) : ''}
                           </div>
                         )}
                         <div className="flex-1 space-y-1">

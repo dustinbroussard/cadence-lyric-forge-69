@@ -8,7 +8,7 @@ import { MusicalContextPanel } from '../components/MusicalContextPanel';
 import { MusicalSuggestionsModal } from '../components/MusicalSuggestionsModal';
 import { EnhancedPromptSetManager } from '../components/EnhancedPromptSetManager';
 import { PrepForSuno } from '../components/PrepForSuno';
-import { InstallPrompt } from '../components/InstallPrompt';
+import { InstallButton } from '../components/InstallButton';
 import { LyricLibrary } from '../components/LyricLibrary';
 import { AdvancedLyricEditor } from '../components/AdvancedLyricEditor';
 
@@ -890,7 +890,6 @@ Return only the enhanced version, no explanations.`;
 
   return (
     <div className={`min-h-screen transition-all duration-500 ${isDark ? 'dark' : ''} lyric-bg-primary lyric-text`}>
-      <InstallPrompt />
       <input
         type="file"
         accept=".txt,.md"
@@ -977,6 +976,7 @@ Return only the enhanced version, no explanations.`;
             >
               {state.showMobileMenu ? <X size={14} /> : <Menu size={14} />}
             </button>
+            <InstallButton />
           </div>
         </div>
       </header>
