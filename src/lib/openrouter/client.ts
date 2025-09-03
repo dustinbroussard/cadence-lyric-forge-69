@@ -1,10 +1,34 @@
 import { chatResponseSchema, ChatResponse, messageSchema } from './schemas';
 
 export function extractJsonFromMarkdown(text: string): unknown {
-  const match = text.match(/```json\s*([\s\S]*?)```/i) || text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No JSON block found');
-  const raw = match[1] ?? match[0];
-  return JSON.parse(raw);
+  // Prefer fenced code blocks labelled as JSON but fall back to any fenced block
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+
+  let jsonString: string | null = null;
+
+  if (fenceMatch) {
+    jsonString = fenceMatch[1];
+  } else {
+    // No fence found – attempt to locate the first JSON object by tracking braces
+    const start = text.indexOf('{');
+    if (start !== -1) {
+      let depth = 0;
+      for (let i = start; i < text.length; i++) {
+        const char = text[i];
+        if (char === '{' || char === '[') depth++;
+        if (char === '}' || char === ']') {
+          depth--;
+          if (depth === 0) {
+            jsonString = text.slice(start, i + 1);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (!jsonString) throw new Error('No JSON block found');
+  return JSON.parse(jsonString);
 }
 
 export async function withBackoff<T>(fn: () => Promise<T>, max = 4): Promise<T> {
