@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Download, X, Smartphone } from 'lucide-react';
+import { toast } from '@/components/ui/use-toast';
 
 // Change this value to control how often the prompt is shown.
 // 0 = every new session, 1 = daily, 7 = weekly, etc.
@@ -145,7 +146,10 @@ export const InstallPrompt: React.FC = () => {
       message += 'Look for "Add to Home screen", "Install app", or similar option in your browser menu.\n\nThis works best in Chrome, Edge, or Safari browsers.';
     }
     
-    alert(message);
+    toast({
+      title: 'Install App',
+      description: <div className="whitespace-pre-line">{message}</div>,
+    });
   };
 
   const handleDismiss = () => {
