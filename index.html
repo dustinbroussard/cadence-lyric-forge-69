@@ -14,20 +14,20 @@
     <meta name="apple-mobile-web-app-title" content="Cadence Codex" />
     <meta name="mobile-web-app-capable" content="yes" />
     
-    <!-- Manifest -->
-    <link rel="manifest" href="/manifest.webmanifest" />
-    
-    <!-- Icons -->
-    <link rel="icon" href="/icon-192.png" type="image/png" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
-    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+      <!-- Manifest -->
+      <link rel="manifest" href="./manifest.webmanifest" />
+
+      <!-- Icons -->
+      <link rel="icon" href="./icon-192.png" type="image/png" />
+      <link rel="apple-touch-icon" href="./icon-192.png" />
+      <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png" />
+      <link rel="apple-touch-icon" sizes="512x512" href="./icon-512.png" />
     
     <!-- Open Graph -->
     <meta property="og:title" content="Cadence Codex - AI Songwriting Assistant" />
     <meta property="og:description" content="Create professional lyrics with AI-powered guidance" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/icon-512.png" />
+      <meta property="og:image" content="./icon-512.png" />
     
     <!-- Additional PWA optimization -->
     <meta name="format-detection" content="telephone=no" />
@@ -37,8 +37,8 @@
   </head>
 
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+      <div id="root"></div>
+      <script type="module" src="./src/main.tsx"></script>
     
     <!-- Single Service Worker Registration -->
     <script>
@@ -46,9 +46,9 @@
         window.addEventListener('load', async () => {
           try {
             console.log('Registering service worker...');
-            const registration = await navigator.serviceWorker.register('/sw.js', {
-              scope: '/'
-            });
+              const registration = await navigator.serviceWorker.register('sw.js', {
+                scope: './'
+              });
             
             console.log('SW registered successfully:', registration);
             

@@ -3,50 +3,50 @@
   "name": "Cadence Codex - AI Songwriting Assistant",
   "short_name": "Cadence Codex",
   "description": "Create professional lyrics with AI-powered guidance through a structured 6-stage creative process",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0D0004",
   "theme_color": "#C1001F",
-  "scope": "/",
-  "id": "/",
+  "scope": "./",
+  "id": "./",
   "categories": ["music", "productivity", "entertainment"],
   "lang": "en",
   "dir": "ltr",
   "prefer_related_applications": false,
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+      {
+        "src": "icon-192.png",
+        "sizes": "192x192",
+        "type": "image/png",
+        "purpose": "any maskable"
+      },
+      {
+        "src": "icon-512.png",
+        "sizes": "512x512",
+        "type": "image/png",
+        "purpose": "any maskable"
+      }
   ],
   "screenshots": [
-    {
-      "src": "/screenshot.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+      {
+        "src": "screenshot.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
   ],
   "shortcuts": [
     {
       "name": "Start Writing",
       "short_name": "Write",
       "description": "Begin creating new lyrics",
-      "url": "/",
-      "icons": [
-        {
-          "src": "/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
+        "url": "./",
+        "icons": [
+          {
+            "src": "icon-192.png",
+            "sizes": "192x192"
+          }
+        ]
     }
   ],
   "launch_handler": {

@@ -1,17 +1,17 @@
 
-const CACHE_NAME = 'cadence-codex-v8';
+const CACHE_NAME = 'cadence-codex-v9';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/screenshot.png'
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './icon-192.png',
+  './icon-512.png',
+  './screenshot.png'
 ];
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
-  console.log('Service Worker: Installing v8');
+  console.log('Service Worker: Installing v9');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -30,7 +30,7 @@ self.addEventListener('install', (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker: Activating v8');
+  console.log('Service Worker: Activating v9');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -69,10 +69,10 @@ self.addEventListener('fetch', (event) => {
 
         return cachedResponse || fetchPromise;
       })
-    ).catch(() => {
-      if (event.request.destination === 'document') {
-        return caches.match('/');
-      }
-    })
+      ).catch(() => {
+        if (event.request.destination === 'document') {
+          return caches.match('./');
+        }
+      })
   );
 });
