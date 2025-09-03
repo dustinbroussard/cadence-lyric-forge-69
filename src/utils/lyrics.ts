@@ -56,3 +56,22 @@ export function normalizeFinalLyrics(text: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
+
+// Basic syllable estimation for a single word
+export function countSyllables(word: string): number {
+  let w = (word || '').toLowerCase();
+  if (w.length <= 3) return w ? 1 : 0;
+  w = w
+    .replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/i, '')
+    .replace(/^y/, '');
+  const matches = w.match(/[aeiouy]{1,2}/g);
+  return matches ? matches.length : 0;
+}
+
+// Count syllables in an entire line by summing each word
+export function lineSyllableCount(line: string): number {
+  return (line || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .reduce((sum, w) => sum + countSyllables(w), 0);
+}
