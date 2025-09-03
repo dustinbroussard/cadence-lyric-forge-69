@@ -1,10 +1,35 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { normalizeSectionLabels } from '@/utils/lyrics';
+import { normalizeSectionLabels, lineSyllableCount } from '@/utils/lyrics';
+import { cn } from '@/lib/utils';
 import {
-  X, Edit3, Music, Download, Save, Undo, Redo, Type, Palette,
-  Play, Pause, RotateCcw, Settings, Plus, Trash2, Copy,
-  Zap, Sparkles, RefreshCw, MessageSquare, Guitar, ChevronDown, Menu, Minus, Upload
+  X,
+  Edit3,
+  Music,
+  Download,
+  Save,
+  Undo,
+  Redo,
+  Type,
+  Palette,
+  Play,
+  Pause,
+  RotateCcw,
+  Settings,
+  Plus,
+  Trash2,
+  Copy,
+  Zap,
+  Sparkles,
+  RefreshCw,
+  MessageSquare,
+  Guitar,
+  ChevronDown,
+  Menu,
+  Minus,
+  Upload,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 import { chat } from '@/lib/openrouter/client';
@@ -259,6 +284,18 @@ export function AdvancedLyricEditor({
     }
   };
 
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    const listener = () => handleTextSelection();
+    el.addEventListener('mouseup', listener);
+    el.addEventListener('keyup', listener);
+    return () => {
+      el.removeEventListener('mouseup', listener);
+      el.removeEventListener('keyup', listener);
+    };
+  }, [sections]);
+
   const callAI = async (prompt: string, context: string = '') => {
     if (!apiKey) {
       toast({
@@ -401,13 +438,6 @@ export function AdvancedLyricEditor({
   };
 
   // ============ Rhyme & Measure ============
-  const syllableCount = (word: string) => {
-    let w = (word || '').toLowerCase();
-    if (w.length <= 3) return w ? 1 : 0;
-    w = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/,'').replace(/^y/,'');
-    const m = w.match(/[aeiouy]{1,2}/g);
-    return m ? m.length : 0;
-  };
 
   const lastWord = (line: string) => (line.trim().split(/\s+/).pop() || '').replace(/[^a-zA-Z]/g, '').toLowerCase();
   const rhymeKey = (word: string) => {
@@ -440,7 +470,7 @@ export function AdvancedLyricEditor({
     return out;
   };
 
-  const [measureMode, setMeasureMode] = useState(false);
+  const [measureMode, setMeasureMode] = useState(true);
   const [readOnly, setReadOnly] = useState(false);
   const rhymeClasses = settings.rhymeHighlight ? computeRhymeClasses(sections) : {};
 
@@ -611,6 +641,53 @@ export function AdvancedLyricEditor({
             variant="outline"
             size="sm"
             className="rounded-full w-10 h-10 p-0"
+            onClick={undo}
+            title="Undo"
+            disabled={!undoStack.length}
+          >
+            <Undo className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={redo}
+            title="Redo"
+            disabled={!redoStack.length}
+          >
+            <Redo className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={copyToClipboard}
+            title="Copy Lyrics"
+          >
+            <Copy className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={exportLyrics}
+            title="Export"
+          >
+            <Download className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={() => onSave?.(title, getAllLyrics())}
+            title="Save"
+          >
+            <Save className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
             onClick={() => setShowSettings(!showSettings)}
             title="Settings"
           >
@@ -692,21 +769,25 @@ export function AdvancedLyricEditor({
               <Palette className="w-4 h-4 mr-1" />
               Rhyme Colors
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMeasureMode(!measureMode)}
+            >
+              <Type className="w-4 h-4 mr-1" />
+              {measureMode ? 'Hide' : 'Show'} Syllables
+            </Button>
           </div>
         </div>
       )}
 
       {/* Main Editor Area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" ref={editorRef}>
         <div className="space-y-1">
           {sections.map((section, sectionIndex) => {
-            let globalLineCounter = sections
-              .slice(0, sectionIndex)
-              .reduce((acc, s) => acc + s.lines.length, 0);
-            
             return (
               <div key={section.id} className="border-b border-border">
-                <div 
+                <div
                   className="flex items-center justify-between p-3 bg-muted/50 cursor-pointer hover:bg-muted/70 transition-colors"
                   onClick={() => {
                     const newCollapsed = { ...collapsedSections };
@@ -730,58 +811,110 @@ export function AdvancedLyricEditor({
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="p-1 h-6 w-6"
-                  >
-                    <ChevronDown className={`w-4 h-4 transition-transform ${
-                      collapsedSections[section.id] ? '-rotate-90' : 'rotate-0'
-                    }`} />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        moveSection(section.id, -1);
+                      }}
+                      disabled={sectionIndex === 0}
+                      title="Move Up"
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        moveSection(section.id, 1);
+                      }}
+                      disabled={sectionIndex === sections.length - 1}
+                      title="Move Down"
+                    >
+                      <ArrowDown className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSection(section.id);
+                      }}
+                      title="Delete Section"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-6 w-6"
+                    >
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform ${
+                          collapsedSections[section.id] ? '-rotate-90' : 'rotate-0'
+                        }`}
+                      />
+                    </Button>
+                  </div>
                 </div>
 
                 {!collapsedSections[section.id] && (
                   <div className="px-3 pb-3 space-y-2">
-                    {section.lines.map((line, lineIndex) => {
-                      globalLineCounter++;
-                      return (
-                        <div key={lineIndex} className="flex gap-3 items-start">
-                          <div className="w-8 text-xs text-muted-foreground pt-2 text-right shrink-0">
-                            {globalLineCounter}
+                    {section.lines.map((line, lineIndex) => (
+                      <div key={lineIndex} className="flex gap-3 items-start">
+                        {measureMode && (
+                          <div className="w-10 text-xs text-muted-foreground pt-2 text-right shrink-0">
+                            {lineSyllableCount(line.lyric)}
                           </div>
-                          <div className="flex-1 space-y-1">
-                            {!hideChords && settings.showChords && (
-                              <div className="text-sm font-mono text-primary">
-                                <Input
-                                  value={line.chords}
-                                  onChange={(e) => updateLine(section.id, lineIndex, 'chords', e.target.value)}
-                                  placeholder=""
-                                  disabled={readOnly}
-                                  className="border-none bg-transparent p-0 h-auto font-mono text-sm focus-visible:ring-0 focus-visible:ring-offset-0"
-                                />
-                              </div>
-                            )}
-                            <div className="text-base">
+                        )}
+                        <div className="flex-1 space-y-1">
+                          {!hideChords && settings.showChords && (
+                            <div className="text-sm font-mono text-primary">
                               <Input
-                                value={line.lyric}
-                                onChange={(e) => updateLine(section.id, lineIndex, 'lyric', e.target.value)}
-                                placeholder="Enter lyrics..."
+                                value={line.chords}
+                                onChange={(e) => updateLine(section.id, lineIndex, 'chords', e.target.value)}
+                                placeholder=""
                                 disabled={readOnly}
-                                className="border-none bg-transparent p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    addLineAfter(section.id, lineIndex);
-                                  }
-                                }}
+                                className="border-none bg-transparent p-0 h-auto font-mono text-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+                                onFocus={() => setCurrentSectionId(section.id)}
                               />
                             </div>
+                          )}
+                          <div className="text-base">
+                            <Input
+                              value={line.lyric}
+                              onChange={(e) => updateLine(section.id, lineIndex, 'lyric', e.target.value)}
+                              placeholder="Enter lyrics..."
+                              disabled={readOnly}
+                              className={cn('border-none bg-transparent p-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0', rhymeClasses[`${sectionIndex}:${lineIndex}`])}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  addLineAfter(section.id, lineIndex);
+                                }
+                              }}
+                              onFocus={() => setCurrentSectionId(section.id)}
+                            />
                           </div>
                         </div>
-                      );
-                    })}
-                    
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-1 h-6 w-6 text-muted-foreground hover:text-foreground"
+                          onClick={() => deleteLine(section.id, lineIndex)}
+                          disabled={readOnly}
+                          title="Delete Line"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
                     <div className="flex justify-center pt-2">
                       <Button
                         variant="ghost"
