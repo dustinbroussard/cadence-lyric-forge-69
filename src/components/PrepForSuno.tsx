@@ -23,10 +23,9 @@ export const PrepForSuno: React.FC<PrepForSunoProps> = ({
   onClose
 }) => {
   const [generatedPrompt, setGeneratedPrompt] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
 
-  const generateStylePrompt = () => {
+  const generateStylePrompt = React.useCallback(() => {
     let stylePrompt = '';
     
     // Use existing musical context if available
@@ -80,9 +79,9 @@ export const PrepForSuno: React.FC<PrepForSunoProps> = ({
     }
     
     return stylePrompt;
-  };
+  }, [musicalContext, lyrics, userInput]);
 
-  const cleanLyrics = (rawLyrics: string) => {
+  const cleanLyrics = React.useCallback((rawLyrics: string) => {
     // Remove all markdown formatting, asterisks, commentary, and cleanup
     const cleaned = rawLyrics
       // Remove markdown formatting
@@ -150,19 +149,13 @@ export const PrepForSuno: React.FC<PrepForSunoProps> = ({
     }
     
     return cleaned;
-  };
+  }, []);
 
-  const generateSunoExport = () => {
+  const generateSunoExport = React.useCallback(() => {
     const stylePrompt = generateStylePrompt();
     const cleanedLyrics = cleanLyrics(lyrics);
-    
-    // Generate clean, Suno-ready format
-    const exportText = `${stylePrompt}
-
-${cleanedLyrics}`;
-    
-    setGeneratedPrompt(exportText);
-  };
+    setGeneratedPrompt(`${stylePrompt}\n\n${cleanedLyrics}`);
+  }, [generateStylePrompt, cleanLyrics, lyrics]);
 
   const copyToClipboard = async () => {
     try {
@@ -186,7 +179,7 @@ ${cleanedLyrics}`;
 
   React.useEffect(() => {
     generateSunoExport();
-  }, []);
+  }, [generateSunoExport]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
