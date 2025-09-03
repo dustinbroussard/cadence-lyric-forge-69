@@ -1,10 +1,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { normalizeSectionLabels } from '@/utils/lyrics';
-import { 
-  X, Edit3, Music, Download, Save, Undo, Redo, Type, Palette, 
-  Play, Pause, RotateCcw, Settings, Plus, Trash2, Copy, 
-  Zap, Sparkles, RefreshCw, MessageSquare, Guitar, ChevronDown, Menu, Minus
+import {
+  X, Edit3, Music, Download, Save, Undo, Redo, Type, Palette,
+  Play, Pause, RotateCcw, Settings, Plus, Trash2, Copy,
+  Zap, Sparkles, RefreshCw, MessageSquare, Guitar, ChevronDown, Menu, Minus, Upload
 } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 import { chat } from '@/lib/openrouter/client';
@@ -76,6 +76,7 @@ export function AdvancedLyricEditor({
   const [currentSectionId, setCurrentSectionId] = useState<string | null>(null);
   const { toast } = useToast();
   const editorRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Simple metadata panel state (local only for now)
   const [metaOpen, setMetaOpen] = useState(false);
@@ -128,6 +129,23 @@ export function AdvancedLyricEditor({
       newSections.push({ id: '1', label: '[Verse 1]', lines: [{ chords: '', lyric: '' }] });
     }
     setSections(newSections);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      parseLyrics(normalizeSectionLabels(text));
+      setTitle(file.name.replace(/\.[^/.]+$/, ''));
+      toast({
+        title: 'Song Loaded',
+        description: `"${file.name}" loaded for editing`,
+      });
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const pushToUndoStack = () => {
@@ -572,6 +590,13 @@ export function AdvancedLyricEditor({
 
   return (
     <div className="fixed inset-0 bg-background z-50 flex flex-col">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".txt,.md"
+        className="hidden"
+      />
       {/* Mobile-Style Header */}
       <div className="flex items-center justify-between p-4 bg-muted border-b">
         <div className="flex items-center gap-2">
@@ -599,6 +624,15 @@ export function AdvancedLyricEditor({
             title="Add Section"
           >
             <Plus className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full w-10 h-10 p-0"
+            onClick={() => fileInputRef.current?.click()}
+            title="Upload Song"
+          >
+            <Upload className="w-4 h-4" />
           </Button>
           <Button
             variant="outline"

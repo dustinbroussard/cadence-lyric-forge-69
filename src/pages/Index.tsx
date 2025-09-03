@@ -1,5 +1,5 @@
 import React, { useState, useReducer, useEffect, useCallback, useRef } from 'react';
-import { Play, Pause, Square, Download, Settings, Sun, Moon, Edit3, RotateCcw, Save, ChevronDown, ChevronRight, Menu, X, Copy, Music, Trash2, Users, StopCircle, ArrowRight } from 'lucide-react';
+import { Play, Pause, Square, Download, Settings, Sun, Moon, Edit3, RotateCcw, Save, ChevronDown, ChevronRight, Menu, X, Copy, Music, Trash2, Users, StopCircle, ArrowRight, Upload } from 'lucide-react';
 import { playTypewriterSound, triggerHaptic } from '../utils/audioUtils';
 import { useToast } from '../hooks/use-toast';
 
@@ -281,6 +281,7 @@ export default function CadenceCodex() {
   const [enhancingPrompt, setEnhancingPrompt] = useState(false);
   const animationRef = useRef<number | undefined>(undefined);
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load from localStorage on mount (versioned with migration support)
   useEffect(() => {
@@ -826,6 +827,27 @@ Return only the enhanced version, no explanations.`;
     });
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      const title = file.name.replace(/\.[^/.]+$/, '');
+      dispatch({ type: 'SET_STAGE_DATA', stage: 'flow', payload: normalizeSectionLabels(text) });
+      dispatch({ type: 'SET_USER_INPUT', payload: `Title: ${title}\n\n${text}` });
+      if (!state.showAdvancedEditor) {
+        dispatch({ type: 'TOGGLE_ADVANCED_EDITOR' });
+      }
+      toast({
+        title: 'Song Uploaded',
+        description: `"${title}" loaded into editor`,
+      });
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const handleStageEdit = (stageId: string, newContent: string) => {
     const content = (stageId === 'flow' && state.settings.liveLabelNormalization)
       ? normalizeSectionLabels(newContent)
@@ -869,6 +891,13 @@ Return only the enhanced version, no explanations.`;
   return (
     <div className={`min-h-screen transition-all duration-500 ${isDark ? 'dark' : ''} lyric-bg-primary lyric-text`}>
       <InstallPrompt />
+      <input
+        type="file"
+        accept=".txt,.md"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+      />
       
       {/* Enhanced Compact Mobile Header */}
       <header className="brand-header">
@@ -877,6 +906,15 @@ Return only the enhanced version, no explanations.`;
             <span className="brand-text-gradient">Cadence</span> Codex
           </h1>
           <div className="flex items-center space-x-1">
+            {/* Upload Song Button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1.5 rounded-lg lyric-surface hover:lyric-highlight-bg transition-all duration-300 shadow-sm hover:shadow-md transform hover:scale-105 text-blue-500 hover:text-blue-600"
+              title="Upload Song"
+            >
+              <Upload size={14} />
+            </button>
+
             {/* Add Library Button */}
             <button
               onClick={() => dispatch({ type: 'TOGGLE_LYRIC_LIBRARY' })}
@@ -955,6 +993,18 @@ Return only the enhanced version, no explanations.`;
             </div>
             
             <div className="space-y-1.5">
+              {/* Upload song in mobile menu */}
+              <button
+                onClick={() => {
+                  fileInputRef.current?.click();
+                  dispatch({ type: 'TOGGLE_MOBILE_MENU' });
+                }}
+                className="w-full p-2 rounded-lg lyric-bg-secondary border lyric-border border-opacity-30 flex items-center space-x-2 hover:lyric-highlight-bg transition-colors text-xs text-blue-500"
+              >
+                <Upload size={14} />
+                <span>Upload Song</span>
+              </button>
+
               {/* Add Library button to mobile menu */}
               <button
                 onClick={() => {
