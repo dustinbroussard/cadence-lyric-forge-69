@@ -8,7 +8,7 @@ import { MusicalContextPanel } from '../components/MusicalContextPanel';
 import { MusicalSuggestionsModal } from '../components/MusicalSuggestionsModal';
 import { EnhancedPromptSetManager } from '../components/EnhancedPromptSetManager';
 import { PrepForSuno } from '../components/PrepForSuno';
-import { InstallButton } from '../components/InstallButton';
+import { InstallPrompt } from '../components/InstallPrompt';
 import { LyricLibrary } from '../components/LyricLibrary';
 import { AdvancedLyricEditor } from '../components/AdvancedLyricEditor';
 
@@ -976,7 +976,6 @@ Return only the enhanced version, no explanations.`;
             >
               {state.showMobileMenu ? <X size={14} /> : <Menu size={14} />}
             </button>
-            <InstallButton />
           </div>
         </div>
       </header>
@@ -1762,6 +1761,8 @@ Return only the enhanced version, no explanations.`;
         apiKey={state.settings.apiKey}
         selectedModel={state.settings.selectedModel}
       />
+
+      <InstallPrompt />
     </div>
   );
 }
