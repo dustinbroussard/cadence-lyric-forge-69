@@ -14,9 +14,21 @@ export default defineConfig(({ mode }) => ({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Use the web manifest from /public to avoid duplication
+      useWebManifest: true,
       includeAssets: ['icon-192.png', 'icon-512.png', 'screenshot.png'],
       workbox: {
         runtimeCaching: [
+          {
+            // Cache same-origin navigations for offline support
+            urlPattern: ({ request, sameOrigin }) => request.mode === 'navigate' && sameOrigin,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pages',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 7 },
+            },
+          },
           {
             urlPattern: ({ request }) => request.destination === 'image',
             handler: 'CacheFirst',
@@ -34,30 +46,7 @@ export default defineConfig(({ mode }) => ({
           }
         ]
       },
-      manifest: {
-        name: 'Cadence Codex - AI Songwriting Assistant',
-        short_name: 'Cadence Codex',
-        description: 'Create professional lyrics with AI-powered guidance through a structured 6-stage creative process',
-        start_url: '/',
-        display: 'standalone',
-        orientation: 'portrait',
-        background_color: '#0D0004',
-        theme_color: '#C1001F',
-        icons: [
-          {
-            src: '/icon-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any maskable'
-          },
-          {
-            src: '/icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable'
-          }
-        ]
-      }
+      // Manifest is managed in public/manifest.webmanifest
     }),
     mode === 'development' && componentTagger(),
   ].filter(Boolean),
