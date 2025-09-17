@@ -25,21 +25,72 @@ export function ModelDropdown({ value = '', onChange, className = '' }: ModelDro
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
+    const CACHE_KEY = 'openrouter_models_cache_v1';
+    const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+    // Hydrate from cache immediately for faster UX/offline
+    let hydratedFromCache = false;
+    try {
+      const cachedRaw = localStorage.getItem(CACHE_KEY);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw) as { ts: number; data: Model[] };
+        if (Array.isArray(cached.data)) {
+          setModels(cached.data);
+          setLoading(false);
+          hydratedFromCache = true;
+        }
+      }
+    } catch {
+      // ignore cache errors
+    }
+
     async function fetchModels() {
       try {
-        setLoading(true);
+        setLoading(!hydratedFromCache);
         const res = await fetch("https://openrouter.ai/api/v1/models");
         if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch models`);
         const json = await res.json();
-        setModels(json.data || []);
+        const list: Model[] = json.data || [];
+        setModels(list);
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list }));
+        } catch {
+          // ignore storage errors
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch models');
+        // If cache exists, keep UI usable; otherwise surface the error
+        if (!hydratedFromCache) {
+          setError(err instanceof Error ? err.message : 'Failed to fetch models');
+        }
       } finally {
         setLoading(false);
       }
     }
-    fetchModels();
+    // Only refetch if cache is stale or empty
+    const cachedRaw = localStorage.getItem(CACHE_KEY);
+    let shouldFetch = true;
+    if (cachedRaw) {
+      try {
+        const cached = JSON.parse(cachedRaw) as { ts: number; data: Model[] };
+        if (Date.now() - cached.ts < CACHE_TTL_MS && Array.isArray(cached.data) && cached.data.length) {
+          shouldFetch = false;
+        }
+      } catch {
+        // malformed cache, refetch
+      }
+    }
+    if (shouldFetch) fetchModels();
   }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen]);
 
   const handleModelSelect = (modelId: string) => {
     onChange(modelId);

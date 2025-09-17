@@ -1,5 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { normalizeSectionLabels, lineSyllableCount } from '@/utils/lyrics';
 import { cn } from '@/lib/utils';
 import {
@@ -100,6 +101,9 @@ export function AdvancedLyricEditor({
   const { toast } = useToast();
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showQuickSettings, setShowQuickSettings] = useState(false);
 
   // Simple metadata panel state (local only for now)
   const [metaOpen, setMetaOpen] = useState(false);
@@ -109,18 +113,26 @@ export function AdvancedLyricEditor({
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [hideChords, setHideChords] = useState(false);
 
-  useEffect(() => {
-    if (initialLyrics) {
-      parseLyrics(normalizeSectionLabels(initialLyrics));
-    } else {
-      setSections([
-        { id: '1', label: '[Verse 1]', lines: [{ chords: '', lyric: '' }] },
-        { id: '2', label: '[Chorus]', lines: [{ chords: '', lyric: '' }] }
-      ]);
-    }
-  }, [initialLyrics]);
+  // Chord/lyric heuristics (stable callbacks)
+  const isChordTokenFn = useCallback((tok: string) => (
+    /^(?:[A-G](?:#|b)?(?:(?:m(?!aj))|maj7|maj9|maj|m7|m9|m11|sus2|sus4|add9|dim7?|aug|\+|°)?(?:\/([A-G](?:#|b)?))?|N\/?A)$/i.test(tok)
+  ), []);
 
-  const parseLyrics = (lyrics: string) => {
+  const isChordLineFn = useCallback((line: string) => {
+    const l = (line || '').trim();
+    if (!l) return false;
+    if (/^[A-Za-z0-9 ,.'"-]+:$/.test(l)) return false;
+    const tokens = l.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return false;
+    let good = 0;
+    for (const t of tokens) if (isChordTokenFn(t)) good++;
+    const conf = good / tokens.length;
+    if (conf >= 0.6) return true;
+    if (conf >= 0.4 && !/[a-z]{2,}/.test(l.replace(/maj|sus|dim|aug|add|maj7|maj9|m7|m9|m11/gi, ''))) return true;
+    return false;
+  }, [isChordTokenFn]);
+
+  const parseLyrics = useCallback((lyrics: string) => {
     const lines = lyrics.split('\n');
     const newSections: LyricSection[] = [];
     let current: LyricSection | null = null;
@@ -135,7 +147,7 @@ export function AdvancedLyricEditor({
       }
       if (!current) current = { id: String(sectionCounter++), label: '[Verse 1]', lines: [] };
       // Try to interpret alternating chords/lyrics
-      if (isChordLine(trimmed)) {
+      if (isChordLineFn(trimmed)) {
         const next = (lines[i + 1] || '').trimEnd();
         if (next && !/^\[.*\]$/.test(next)) {
           current.lines.push({ chords: trimmed, lyric: next });
@@ -152,7 +164,18 @@ export function AdvancedLyricEditor({
       newSections.push({ id: '1', label: '[Verse 1]', lines: [{ chords: '', lyric: '' }] });
     }
     setSections(newSections);
-  };
+  }, [isChordLineFn]);
+
+  useEffect(() => {
+    if (initialLyrics) {
+      parseLyrics(normalizeSectionLabels(initialLyrics));
+    } else {
+      setSections([
+        { id: '1', label: '[Verse 1]', lines: [{ chords: '', lyric: '' }] },
+        { id: '2', label: '[Chorus]', lines: [{ chords: '', lyric: '' }] }
+      ]);
+    }
+  }, [initialLyrics, parseLyrics]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -292,7 +315,7 @@ export function AdvancedLyricEditor({
       el.removeEventListener('mouseup', listener);
       el.removeEventListener('keyup', listener);
     };
-  }, [sections]);
+  }, []);
 
   const callAI = async (prompt: string, context: string = '') => {
     if (!apiKey) {
@@ -444,7 +467,7 @@ export function AdvancedLyricEditor({
     return word;
   };
 
-  const computeRhymeClasses = (secs: LyricSection[]): Record<string, string> => {
+  const computeRhymeClasses = useCallback((secs: LyricSection[]): Record<string, string> => {
     const words: { key: string; id: string }[] = [];
     secs.forEach((s, si) => s.lines.forEach((ln, li) => {
       const lw = lastWord(ln.lyric);
@@ -466,16 +489,18 @@ export function AdvancedLyricEditor({
       }
     }
     return out;
-  };
+  }, []);
 
   const [showSyllables, setShowSyllables] = useState(true);
   const [readOnly, setReadOnly] = useState(false);
-  const rhymeClasses = settings.rhymeHighlight ? computeRhymeClasses(sections) : {};
+  const rhymeClasses = useMemo(() => (
+    settings.rhymeHighlight ? computeRhymeClasses(sections) : {}
+  ), [settings.rhymeHighlight, sections, computeRhymeClasses]);
 
   // ============ AI parsing helpers ============
   const isSectionLabel = (line: string) => /^\s*\[[^\]]+\]\s*$/.test(line);
 
-  const isChordToken = (tok: string) => /^(?:[A-G](?:#|b)?(?:(?:m(?!aj))|maj7|maj9|maj|m7|m9|m11|sus2|sus4|add9|dim7?|aug|\+|°)?(?:\/([A-G](?:#|b)?))?|N\/?A)$/i.test(tok);
+  // isChordToken defined above as stable callback
 
   const isChordLine = (line: string) => {
     const l = (line || '').trim();
@@ -518,7 +543,7 @@ export function AdvancedLyricEditor({
       }
       if (!current) current = { label: '[Verse 1]', lyrics: [], chords: [] };
       // Determine alternating by chord/lyric heuristic
-      if (isChordLine(line)) {
+      if (isChordLineFn(line)) {
         current.chords.push(line);
         const next = (lines[i + 1] || '').trimEnd();
         if (next && !isSectionLabel(next)) {
@@ -625,157 +650,153 @@ export function AdvancedLyricEditor({
         accept=".txt,.md"
         className="hidden"
       />
-      {/* Mobile-Style Header */}
-      <div className="flex items-center justify-between p-4 bg-muted border-b">
-        <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">{title || 'Untitled Song'}</h1>
-          <span className="text-sm text-muted-foreground">
-            {new Date().toLocaleDateString()}
-          </span>
+      {/* Responsive Header */}
+      {isMobile ? (
+        <div className="flex items-center justify-between p-3 bg-muted border-b">
+          <div className="flex items-center gap-2 min-w-0">
+            <Button variant="outline" size="sm" className="rounded-full w-9 h-9 p-0" onClick={onClose} title="Close">
+              <X className="w-4 h-4" />
+            </Button>
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold truncate max-w-[50vw]">{title || 'Untitled Song'}</h1>
+              <span className="text-[10px] text-muted-foreground">{new Date().toLocaleDateString()}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" className="rounded-full w-9 h-9 p-0" onClick={() => onSave?.(title, getAllLyrics())} title="Save">
+              <Save className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-9 h-9 p-0" onClick={() => setShowMobileMenu(true)} title="More">
+              <Menu className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
-        
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={undo}
-            title="Undo"
-            disabled={!undoStack.length}
-          >
-            <Undo className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={redo}
-            title="Redo"
-            disabled={!redoStack.length}
-          >
-            <Redo className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={copyToClipboard}
-            title="Copy Lyrics"
-          >
-            <Copy className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={exportLyrics}
-            title="Export"
-          >
-            <Download className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={() => onSave?.(title, getAllLyrics())}
-            title="Save"
-          >
-            <Save className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={() => setShowSettings(!showSettings)}
-            title="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={addSection}
-            title="Add Section"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={() => fileInputRef.current?.click()}
-            title="Upload Song"
-          >
-            <Upload className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={openAiTools}
-            title="AI Tools"
-          >
-            <Sparkles className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={() => setMetaOpen(true)}
-            title="Song Info"
-          >
-            <Music className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full w-10 h-10 p-0"
-            onClick={onClose}
-            title="Close"
-          >
-            <X className="w-4 h-4" />
-          </Button>
+      ) : (
+        <div className="flex items-center justify-between p-4 bg-muted border-b">
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold">{title || 'Untitled Song'}</h1>
+            <span className="text-sm text-muted-foreground">{new Date().toLocaleDateString()}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={undo} title="Undo" disabled={!undoStack.length}>
+              <Undo className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={redo} title="Redo" disabled={!redoStack.length}>
+              <Redo className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={copyToClipboard} title="Copy Lyrics">
+              <Copy className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={exportLyrics} title="Export">
+              <Download className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={() => onSave?.(title, getAllLyrics())} title="Save">
+              <Save className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={() => setShowSettings(!showSettings)} title="Settings">
+              <Settings className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={addSection} title="Add Section">
+              <Plus className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={() => fileInputRef.current?.click()} title="Upload Song">
+              <Upload className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={openAiTools} title="AI Tools">
+              <Sparkles className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={() => setMetaOpen(true)} title="Song Info">
+              <Music className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="rounded-full w-10 h-10 p-0" onClick={onClose} title="Close">
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Settings Panel */}
       {showSettings && (
-        <div className="p-4 bg-muted border-b">
-          <div className="flex items-center justify-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setHideChords(!hideChords)}
-            >
-              <Guitar className="w-4 h-4 mr-1" />
-              {hideChords ? 'Show' : 'Hide'} Chords
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setReadOnly(!readOnly)}
-            >
-              {readOnly ? <Edit3 className="w-4 h-4 mr-1" /> : <Save className="w-4 h-4 mr-1" />}
-              {readOnly ? 'Edit' : 'Performance'} Mode
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSettings(prev => ({ ...prev, rhymeHighlight: !prev.rhymeHighlight }))}
-            >
-              <Palette className="w-4 h-4 mr-1" />
-              Rhyme Colors
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowSyllables(!showSyllables)}
-            >
-              <Type className="w-4 h-4 mr-1" />
-              {showSyllables ? 'Hide' : 'Show'} Syllables
-            </Button>
-          </div>
+        <div className="p-3 bg-muted border-b">
+          {isMobile ? (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant={!hideChords ? 'default' : 'outline'}
+                size="sm"
+                aria-pressed={!hideChords}
+                className="justify-start py-3"
+                onClick={() => setHideChords(!hideChords)}
+              >
+                <Guitar className="w-4 h-4 mr-2" />
+                Show Chords
+              </Button>
+              <Button
+                variant={!readOnly ? 'default' : 'outline'}
+                size="sm"
+                aria-pressed={!readOnly}
+                className="justify-start py-3"
+                onClick={() => setReadOnly((v) => !v)}
+              >
+                {readOnly ? <Edit3 className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                Edit Mode
+              </Button>
+              <Button
+                variant={settings.rhymeHighlight ? 'default' : 'outline'}
+                size="sm"
+                aria-pressed={settings.rhymeHighlight}
+                className="justify-start py-3"
+                onClick={() => setSettings(prev => ({ ...prev, rhymeHighlight: !prev.rhymeHighlight }))}
+              >
+                <Palette className="w-4 h-4 mr-2" />
+                Rhyme Colors
+              </Button>
+              <Button
+                variant={showSyllables ? 'default' : 'outline'}
+                size="sm"
+                aria-pressed={showSyllables}
+                className="justify-start py-3"
+                onClick={() => setShowSyllables(!showSyllables)}
+              >
+                <Type className="w-4 h-4 mr-2" />
+                Show Syllables
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHideChords(!hideChords)}
+              >
+                <Guitar className="w-4 h-4 mr-1" />
+                {hideChords ? 'Show' : 'Hide'} Chords
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReadOnly(!readOnly)}
+              >
+                {readOnly ? <Edit3 className="w-4 h-4 mr-1" /> : <Save className="w-4 h-4 mr-1" />}
+                {readOnly ? 'Edit' : 'Performance'} Mode
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSettings(prev => ({ ...prev, rhymeHighlight: !prev.rhymeHighlight }))}
+              >
+                <Palette className="w-4 h-4 mr-1" />
+                Rhyme Colors
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSyllables(!showSyllables)}
+              >
+                <Type className="w-4 h-4 mr-1" />
+                {showSyllables ? 'Hide' : 'Show'} Syllables
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1026,6 +1047,97 @@ export function AdvancedLyricEditor({
                  <Button className="w-full" onClick={() => runAiTool('suggestChords')}>Suggest Chords</Button>
                </div>
                <Button variant="outline" className="w-full mt-2" onClick={closeAiTools}>Cancel</Button>
+             </div>
+           </div>
+         )}
+
+         {/* Mobile bottom toolbar */}
+         {isMobile && (
+           <div className="fixed inset-x-0 bottom-0 z-40 p-2 pt-2 bg-background/95 border-t border-border backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
+             <div className="flex items-center justify-between gap-2">
+               <Button variant="outline" size="sm" className="flex-1" onClick={() => setHideChords(!hideChords)}>
+                 <Guitar className="w-4 h-4 mr-1" /> {hideChords ? 'Show' : 'Hide'} Chords
+               </Button>
+               <Button variant="outline" size="sm" className="flex-1" onClick={() => setSettings(s => ({ ...s, rhymeHighlight: !s.rhymeHighlight }))}>
+                 <Type className="w-4 h-4 mr-1" /> Rhyme
+               </Button>
+               <Button variant="outline" size="sm" className="flex-1" onClick={copyToClipboard}>
+                 <Copy className="w-4 h-4 mr-1" /> Copy
+               </Button>
+               <Button variant="ghost" size="sm" className="rounded-full w-9 h-9 p-0" onClick={() => setShowQuickSettings(true)} title="Quick Settings">
+                 <Settings className="w-4 h-4" />
+               </Button>
+             </div>
+           </div>
+         )}
+
+         {/* Mobile actions sheet */}
+         {isMobile && showMobileMenu && (
+           <div className="fixed inset-0 z-[70]" onClick={() => setShowMobileMenu(false)}>
+             <div className="absolute inset-0 bg-black/50" />
+             <div className="absolute inset-x-0 bottom-0 bg-background border-t border-border rounded-t-2xl p-3 space-y-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }} onClick={(e) => e.stopPropagation()}>
+               <div className="h-1 w-10 bg-muted mx-auto rounded" />
+               <div className="grid grid-cols-2 gap-2">
+                 <Button variant="outline" onClick={undo} disabled={!undoStack.length}><Undo className="w-4 h-4 mr-1" /> Undo</Button>
+                 <Button variant="outline" onClick={redo} disabled={!redoStack.length}><Redo className="w-4 h-4 mr-1" /> Redo</Button>
+                 <Button variant="outline" onClick={exportLyrics}><Download className="w-4 h-4 mr-1" /> Export</Button>
+                 <Button variant="outline" onClick={() => fileInputRef.current?.click()}><Upload className="w-4 h-4 mr-1" /> Upload</Button>
+                 <Button variant="outline" onClick={addSection}><Plus className="w-4 h-4 mr-1" /> Add Section</Button>
+                 <Button variant="outline" onClick={() => setMetaOpen(true)}><Music className="w-4 h-4 mr-1" /> Song Info</Button>
+                 <Button variant="outline" onClick={openAiTools}><Sparkles className="w-4 h-4 mr-1" /> AI Tools</Button>
+                 <Button variant="outline" onClick={() => setShowSettings(!showSettings)}><Settings className="w-4 h-4 mr-1" /> Settings</Button>
+               </div>
+               <Button className="w-full" onClick={() => setShowMobileMenu(false)}>Close</Button>
+             </div>
+           </div>
+         )}
+
+         {/* Quick Settings Sheet (Mobile) */}
+         {isMobile && showQuickSettings && (
+           <div className="fixed inset-0 z-[75]" onClick={() => setShowQuickSettings(false)}>
+             <div className="absolute inset-0 bg-black/50" />
+             <div className="absolute inset-x-0 bottom-0 bg-background border-t border-border rounded-t-2xl p-3 space-y-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }} onClick={(e) => e.stopPropagation()}>
+               <div className="h-1 w-10 bg-muted mx-auto rounded" />
+               <h3 className="text-sm font-semibold">Quick Settings</h3>
+               <div className="grid grid-cols-2 gap-2">
+                 <Button
+                   variant={!hideChords ? 'default' : 'outline'}
+                   size="sm"
+                   aria-pressed={!hideChords}
+                   className="justify-start py-3"
+                   onClick={() => setHideChords(!hideChords)}
+                 >
+                   <Guitar className="w-4 h-4 mr-2" /> Show Chords
+                 </Button>
+                 <Button
+                   variant={!readOnly ? 'default' : 'outline'}
+                   size="sm"
+                   aria-pressed={!readOnly}
+                   className="justify-start py-3"
+                   onClick={() => setReadOnly((v) => !v)}
+                 >
+                   {readOnly ? <Edit3 className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />} Edit Mode
+                 </Button>
+                 <Button
+                   variant={settings.rhymeHighlight ? 'default' : 'outline'}
+                   size="sm"
+                   aria-pressed={settings.rhymeHighlight}
+                   className="justify-start py-3"
+                   onClick={() => setSettings(prev => ({ ...prev, rhymeHighlight: !prev.rhymeHighlight }))}
+                 >
+                   <Palette className="w-4 h-4 mr-2" /> Rhyme Colors
+                 </Button>
+                 <Button
+                   variant={showSyllables ? 'default' : 'outline'}
+                   size="sm"
+                   aria-pressed={showSyllables}
+                   className="justify-start py-3"
+                   onClick={() => setShowSyllables(!showSyllables)}
+                 >
+                   <Type className="w-4 h-4 mr-2" /> Show Syllables
+                 </Button>
+               </div>
+               <Button className="w-full" onClick={() => setShowQuickSettings(false)}>Done</Button>
              </div>
            </div>
          )}
