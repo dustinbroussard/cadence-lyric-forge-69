@@ -1,31 +1,48 @@
 
 // Sound effects and haptic feedback utilities
-export const playTypewriterSound = () => {
+let sharedAudioContext: (AudioContext | null) = null;
+let lastTypeSoundAt = 0;
+
+function getAudioContext(): AudioContext | null {
   try {
     const w = window as Window & { webkitAudioContext?: typeof window.AudioContext };
-    const AudioContextClass = window.AudioContext || w.webkitAudioContext;
-    if (!AudioContextClass) {
-      console.log('AudioContext not supported');
-      return;
-    }
+    const Ctor = window.AudioContext || w.webkitAudioContext;
+    if (!Ctor) return null;
+    if (!sharedAudioContext) sharedAudioContext = new Ctor();
+    // Attempt to resume if suspended (common before user interaction)
+    if (sharedAudioContext.state === 'suspended') void sharedAudioContext.resume().catch(() => {});
+    return sharedAudioContext;
+  } catch {
+    return null;
+  }
+}
 
-    const audioContext = new AudioContextClass();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.1);
-    
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.1);
-  } catch (error) {
-    console.log('Audio not supported');
+export const playTypewriterSound = () => {
+  const now = performance.now();
+  // Rate limit to avoid excessive audio node creation
+  if (now - lastTypeSoundAt < 50) return; // ~20Hz max
+  lastTypeSoundAt = now;
+
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    const t0 = ctx.currentTime;
+    osc.frequency.setValueAtTime(850, t0);
+    osc.frequency.exponentialRampToValueAtTime(220, t0 + 0.08);
+
+    gain.gain.setValueAtTime(0.08, t0);
+    gain.gain.exponentialRampToValueAtTime(0.01, t0 + 0.08);
+
+    osc.start(t0);
+    osc.stop(t0 + 0.09);
+  } catch {
+    // noop if audio fails
   }
 };
 

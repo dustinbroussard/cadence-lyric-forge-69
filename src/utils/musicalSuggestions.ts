@@ -1,4 +1,6 @@
 
+import { extractJsonFromMarkdown } from '@/lib/openrouter/client';
+
 export interface MusicalSuggestions {
   tempo: number;
   chordProgression: string;
@@ -32,22 +34,20 @@ Return only valid JSON.`;
 
   try {
     const result = await callOpenRouter(prompt, '');
-    
-    // Clean up the response to extract JSON
-    const jsonMatch = result.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+
+    // Use robust extractor to handle fenced code blocks and inline JSON
+    const parsed = extractJsonFromMarkdown(result) as Partial<MusicalSuggestions> | undefined;
+    if (!parsed || typeof parsed !== 'object') {
       throw new Error('No JSON found in response');
     }
-    
-    const suggestions = JSON.parse(jsonMatch[0]);
-    
-    // Validate and provide defaults
+
+    // Validate and provide sane defaults where missing
     return {
-      tempo: typeof suggestions.tempo === 'number' ? suggestions.tempo : 120,
-      chordProgression: typeof suggestions.chordProgression === 'string' ? suggestions.chordProgression : 'C - G - Am - F',
-      timeSignature: typeof suggestions.timeSignature === 'string' ? suggestions.timeSignature : '4/4',
-      rhythmFeel: typeof suggestions.rhythmFeel === 'string' ? suggestions.rhythmFeel : 'Straight',
-      reasoning: typeof suggestions.reasoning === 'string' ? suggestions.reasoning : 'Standard pop progression'
+      tempo: typeof parsed.tempo === 'number' ? parsed.tempo : 120,
+      chordProgression: typeof parsed.chordProgression === 'string' ? parsed.chordProgression : 'C - G - Am - F',
+      timeSignature: typeof parsed.timeSignature === 'string' ? parsed.timeSignature : '4/4',
+      rhythmFeel: typeof parsed.rhythmFeel === 'string' ? parsed.rhythmFeel : 'Straight',
+      reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : 'Standard pop progression'
     };
   } catch (error) {
     console.error('Failed to analyze lyric for musical fit:', error);
