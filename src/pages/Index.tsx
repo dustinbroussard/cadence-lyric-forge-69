@@ -277,11 +277,21 @@ function appReducer(state: AppState, action: AppAction): AppState {
 
 export default function CadenceCodex() {
   const [state, dispatch] = useReducer<React.Reducer<AppState, AppAction>>(appReducer, { ...initialState, interruptRequested: false });
+  const latestStateRef = useRef<AppState>(state);
+  latestStateRef.current = state;
   const [showSettings, setShowSettings] = useState(false);
   const [enhancingPrompt, setEnhancingPrompt] = useState(false);
   const animationRef = useRef<number | undefined>(undefined);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (animationRef.current !== undefined) {
+        clearInterval(animationRef.current);
+      }
+    };
+  }, []);
 
   // Load from localStorage on mount (versioned with migration support)
   useEffect(() => {
@@ -324,11 +334,12 @@ export default function CadenceCodex() {
   // Service worker registration is handled in index.html to avoid double registration
 
   const callOpenRouter = async (prompt: string, context: string, modelOverride: string | null = null) => {
-    if (!state.settings.apiKey) {
+    const currentState = latestStateRef.current;
+    if (!currentState.settings.apiKey) {
       throw new Error('Please configure your API key in settings');
     }
 
-    const modelToUse = modelOverride || state.settings.selectedModel;
+    const modelToUse = modelOverride || currentState.settings.selectedModel;
     if (!modelToUse) {
       throw new Error('Please select a model');
     }
@@ -338,7 +349,7 @@ export default function CadenceCodex() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-    if (state.interruptRequested) {
+    if (latestStateRef.current.interruptRequested) {
       controller.abort();
       throw new Error('Request interrupted by user');
     }
@@ -348,7 +359,7 @@ export default function CadenceCodex() {
         model: modelToUse,
         messages: [{ role: 'user', content: fullPrompt }],
         signal: controller.signal,
-        apiKey: state.settings.apiKey,
+        apiKey: currentState.settings.apiKey,
       });
       const content = res.choices?.[0]?.message?.content ?? '';
       if (!content) throw new Error('Empty response from model');
@@ -356,7 +367,7 @@ export default function CadenceCodex() {
     } catch (error: unknown) {
       const err = error as { name?: string } | undefined;
       if (err?.name === 'AbortError') {
-        if (state.interruptRequested) throw new Error('Request interrupted by user');
+        if (latestStateRef.current.interruptRequested) throw new Error('Request interrupted by user');
         throw new Error('Request timed out. Please try again.');
       }
       throw error as Error;
@@ -371,26 +382,29 @@ export default function CadenceCodex() {
     dispatch({ type: 'SET_INTERRUPT_REQUESTED', payload: false });
     
     try {
+      const currentState = latestStateRef.current;
       const stage = STAGES[stageIndex];
       
       // Handle Musical Suggestions stage specifically
       if (stage.id === 'musicalSuggestions') {
-        if (state.settings.skipMusicalStage) {
+        if (currentState.settings.skipMusicalStage) {
           dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: 'Stage skipped.' });
           dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+          const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: 'Stage skipped.' };
+          latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
           return;
         }
-        const needsSuggestions = !state.musicalContext.tempo && 
-                               !state.musicalContext.chordProgression && 
-                               !state.musicalContext.timeSignature && 
-                               !state.musicalContext.rhythmFeel;
+        const needsSuggestions = !currentState.musicalContext.tempo && 
+                               !currentState.musicalContext.chordProgression && 
+                               !currentState.musicalContext.timeSignature && 
+                               !currentState.musicalContext.rhythmFeel;
         
         if (needsSuggestions) {
           try {
             const suggestions = await analyzeLyricForMusicalFit(
-              state.userInput,
-              Object.values(state.stageData).join('\n\n'),
-              state.musicalContext.selectedGenres,
+              currentState.userInput,
+              Object.values(currentState.stageData).join('\n\n'),
+              currentState.musicalContext.selectedGenres,
               callOpenRouter
             );
             
@@ -408,6 +422,8 @@ These musical elements have been suggested based on your lyrical content and sel
 
             dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: formattedResponse });
             dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+            const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: formattedResponse };
+            latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
             return;
           } catch (error) {
             console.log('Musical suggestions failed:', error);
@@ -417,6 +433,8 @@ These musical elements have been suggested based on your lyrical content and sel
               payload: `Musical suggestions could not be generated automatically. Please set your musical preferences manually in the Musical Context panel above, or skip this step.`
             });
             dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+            const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: `Musical suggestions could not be generated automatically. Please set your musical preferences manually in the Musical Context panel above, or skip this step.` };
+            latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
             return;
           }
         } else {
@@ -432,42 +450,44 @@ Your musical context is ready! These settings will influence the Flow stage to c
 
           dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: contextSummary });
           dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+          const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: contextSummary };
+          latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
           return;
         }
       }
 
-      const basePrompt = state.customPrompts[stage.id as keyof typeof state.customPrompts] || (DEFAULT_PROMPTS as Record<string, string>)[stage.id];
+      const basePrompt = currentState.customPrompts[stage.id as keyof typeof currentState.customPrompts] || (DEFAULT_PROMPTS as Record<string, string>)[stage.id];
       
       // Build context from user input and ALL previous stages
-      let context = `User Input: ${state.userInput}\n\n`;
-      if (state.musicalContext.selectedGenres.length > 0) {
-        context += `Selected Genres: ${state.musicalContext.selectedGenres.join(', ')}\n\n`;
+      let context = `User Input: ${currentState.userInput}\n\n`;
+      if (currentState.musicalContext.selectedGenres.length > 0) {
+        context += `Selected Genres: ${currentState.musicalContext.selectedGenres.join(', ')}\n\n`;
       }
-      if (state.musicalContext.tempo) {
-        context += `Musical Context - Tempo: ${state.musicalContext.tempo} BPM, Chords: ${state.musicalContext.chordProgression}, Time: ${state.musicalContext.timeSignature}, Feel: ${state.musicalContext.rhythmFeel}\n\n`;
+      if (currentState.musicalContext.tempo) {
+        context += `Musical Context - Tempo: ${currentState.musicalContext.tempo} BPM, Chords: ${currentState.musicalContext.chordProgression}, Time: ${currentState.musicalContext.timeSignature}, Feel: ${currentState.musicalContext.rhythmFeel}\n\n`;
       }
       
       // Include ALL previous stage outputs (not just up to current stage)
       for (let i = 0; i < STAGES.length; i++) {
         const prevStage = STAGES[i];
-        if (i < stageIndex && state.stageData[prevStage.id]) {
-          context += `${prevStage.name}: ${state.stageData[prevStage.id]}\n\n`;
+        if (i < stageIndex && currentState.stageData[prevStage.id]) {
+          context += `${prevStage.name}: ${currentState.stageData[prevStage.id]}\n\n`;
         }
       }
       context += `Current Stage: ${stage.name}`;
 
       // Build prompt with genre injections and context
       const promptContext: PromptContext = {
-        selectedGenres: state.musicalContext.selectedGenres,
-        selectedStructure: stage.id === 'flow' ? state.musicalContext.selectedStructure : undefined,
-        userInput: state.userInput,
-        previousStages: state.stageData
+        selectedGenres: currentState.musicalContext.selectedGenres,
+        selectedStructure: stage.id === 'flow' ? currentState.musicalContext.selectedStructure : undefined,
+        userInput: currentState.userInput,
+        previousStages: currentState.stageData
       };
 
       const enhancedPrompt = buildPromptWithGenreInjection(basePrompt, promptContext);
       
       // Use stage-specific model if selected, otherwise fall back to global setting
-      const stageModel = state.stageModels[stage.id];
+      const stageModel = currentState.stageModels[stage.id];
       let result = await callOpenRouter(enhancedPrompt, context, stageModel || null);
       // Normalize final lyric structure for Flow stage
       if (stage.id === 'flow') {
@@ -475,9 +495,11 @@ Your musical context is ready! These settings will influence the Flow stage to c
       }
       dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: result });
       dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+      const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: result };
+      latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
       
       // Start typewriter animation for all stages when enabled
-      if (state.settings.typewriterEnabled && result && result.length > 50) {
+      if (latestStateRef.current.settings.typewriterEnabled && result && result.length > 50) {
         startTypewriterAnimation(result, stage.id);
       }
       
@@ -497,7 +519,8 @@ Your musical context is ready! These settings will influence the Flow stage to c
   };
 
   const processCritique = async () => {
-    const flowStageData = state.stageData['flow'];
+    const currentState = latestStateRef.current;
+    const flowStageData = currentState.stageData['flow'];
     if (!flowStageData) {
       toast({
         title: 'Flow Required',
@@ -510,12 +533,14 @@ Your musical context is ready! These settings will influence the Flow stage to c
     dispatch({ type: 'SET_LOADING', payload: true });
     
     try {
-      const critiquePrompt = buildCritiquePrompt(flowStageData, state.musicalContext.selectedGenres);
-      const stageModel = state.stageModels['critique'] || state.settings.selectedModel;
+      const critiquePrompt = buildCritiquePrompt(flowStageData, currentState.musicalContext.selectedGenres);
+      const stageModel = currentState.stageModels['critique'] || currentState.settings.selectedModel;
       const result = await callOpenRouter(critiquePrompt, '', stageModel);
       
       dispatch({ type: 'SET_STAGE_DATA', stage: 'critique', payload: result });
       dispatch({ type: 'AUTO_EXPAND_STAGE', payload: 'critique' });
+      const updatedStageData = { ...latestStateRef.current.stageData, critique: result };
+      latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
       
     } catch (error) {
       console.error('Critique processing failed:', error);
@@ -526,6 +551,8 @@ Your musical context is ready! These settings will influence the Flow stage to c
         payload: `Error: ${errorMessage}`
       });
       dispatch({ type: 'AUTO_EXPAND_STAGE', payload: 'critique' });
+      const updatedStageData = { ...latestStateRef.current.stageData, critique: `Error: ${errorMessage}` };
+      latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
@@ -549,8 +576,8 @@ Your musical context is ready! These settings will influence the Flow stage to c
     });
 
     animationRef.current = window.setInterval(() => {
-      // Check for interrupt
-      if (state.interruptRequested) {
+      const snapshot = latestStateRef.current;
+      if (snapshot.interruptRequested) {
         if (animationRef.current !== undefined) clearInterval(animationRef.current);
         dispatch({ 
           type: 'SET_ANIMATION_STATE', 
@@ -566,10 +593,10 @@ Your musical context is ready! These settings will influence the Flow stage to c
           payload: { currentChar }
         });
         
-        if (state.settings.soundEnabled) {
+        if (snapshot.settings.soundEnabled) {
           playTypewriterSound();
         }
-        if (state.settings.hapticEnabled) {
+        if (snapshot.settings.hapticEnabled) {
           triggerHaptic();
         }
       } else {
@@ -580,7 +607,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
         });
       }
     }, Math.random() * 50 + 25); // Faster animation
-  }, [state.settings.soundEnabled, state.settings.hapticEnabled, state.interruptRequested]);
+  }, []);
 
   const pauseAnimation = () => {
     if (animationRef.current !== undefined) {
@@ -616,42 +643,51 @@ Your musical context is ready! These settings will influence the Flow stage to c
 
   // Run all stages sequentially
   const runAllStages = async () => {
-    if (state.isLoading) return;
+    if (latestStateRef.current.isLoading) return;
     dispatch({ type: 'SET_INTERRUPT_REQUESTED', payload: false });
     try {
       for (let i = 0; i < STAGES.length; i++) {
-        if (state.interruptRequested) break;
+        const snapshot = latestStateRef.current;
+        if (snapshot.interruptRequested) break;
         const stage = STAGES[i];
         if (stage.id === 'musicalSuggestions') {
-          if (state.settings.skipMusicalStage) {
+          if (snapshot.settings.skipMusicalStage) {
             dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: 'Stage skipped.' });
             dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+            const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: 'Stage skipped.' };
+            latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
             continue;
           }
-          const needsSuggestions = !state.musicalContext.tempo &&
-            !state.musicalContext.chordProgression &&
-            !state.musicalContext.timeSignature &&
-            !state.musicalContext.rhythmFeel;
+          const needsSuggestions = !snapshot.musicalContext.tempo &&
+            !snapshot.musicalContext.chordProgression &&
+            !snapshot.musicalContext.timeSignature &&
+            !snapshot.musicalContext.rhythmFeel;
 
           if (needsSuggestions) {
             try {
               const suggestions = await analyzeLyricForMusicalFit(
-                state.userInput,
-                Object.values(state.stageData).join('\n\n'),
-                state.musicalContext.selectedGenres,
+                snapshot.userInput,
+                Object.values(snapshot.stageData).join('\n\n'),
+                snapshot.musicalContext.selectedGenres,
                 callOpenRouter
               );
               const formattedResponse = `🎵 **Musical Recommendations**\n\n**Tempo:** ${suggestions.tempo} BPM\n**Chord Progression:** ${suggestions.chordProgression}\n**Time Signature:** ${suggestions.timeSignature}\n**Rhythmic Feel:** ${suggestions.rhythmFeel}\n\n**Reasoning:** ${suggestions.reasoning}`;
               dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: formattedResponse });
               dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+              const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: formattedResponse };
+              latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
             } catch (e) {
               dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: 'Could not auto-generate musical suggestions.' });
               dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+              const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: 'Could not auto-generate musical suggestions.' };
+              latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
             }
           } else {
-            const contextSummary = `🎵 **Current Musical Settings**\n\n**Tempo:** ${state.musicalContext.tempo || 'Not set'} ${state.musicalContext.tempo ? 'BPM' : ''}\n**Chord Progression:** ${state.musicalContext.chordProgression || 'Not set'}\n**Time Signature:** ${state.musicalContext.timeSignature || 'Not set'}\n**Rhythmic Feel:** ${state.musicalContext.rhythmFeel || 'Not set'}`;
+            const contextSummary = `🎵 **Current Musical Settings**\n\n**Tempo:** ${snapshot.musicalContext.tempo || 'Not set'} ${snapshot.musicalContext.tempo ? 'BPM' : ''}\n**Chord Progression:** ${snapshot.musicalContext.chordProgression || 'Not set'}\n**Time Signature:** ${snapshot.musicalContext.timeSignature || 'Not set'}\n**Rhythmic Feel:** ${snapshot.musicalContext.rhythmFeel || 'Not set'}`;
             dispatch({ type: 'SET_STAGE_DATA', stage: stage.id, payload: contextSummary });
             dispatch({ type: 'AUTO_EXPAND_STAGE', payload: stage.id });
+            const updatedStageData = { ...latestStateRef.current.stageData, [stage.id]: contextSummary };
+            latestStateRef.current = { ...latestStateRef.current, stageData: updatedStageData };
           }
         } else {
           // Reuse processStage for normal stages
@@ -664,7 +700,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
   };
 
   const exportLyrics = () => {
-    const raw = state.stageData[STAGES[STAGES.length - 1].id] || 'No lyrics generated yet';
+    const raw = latestStateRef.current.stageData[STAGES[STAGES.length - 1].id] || 'No lyrics generated yet';
     const finalLyrics = normalizeFinalLyrics(raw);
     const blob = new Blob([finalLyrics], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -726,7 +762,8 @@ Your musical context is ready! These settings will influence the Flow stage to c
   };
 
   const enhancePrompt = async () => {
-    if (!state.userInput.trim()) {
+    const snapshot = latestStateRef.current;
+    if (!snapshot.userInput.trim()) {
       toast({
         title: "No Input",
         description: "Please enter your inspiration first",
@@ -735,7 +772,7 @@ Your musical context is ready! These settings will influence the Flow stage to c
       return;
     }
 
-    if (!state.settings.apiKey) {
+    if (!snapshot.settings.apiKey) {
       toast({
         title: "API Key Required",
         description: "Please configure your API key in settings",
@@ -749,11 +786,11 @@ Your musical context is ready! These settings will influence the Flow stage to c
     try {
       const enhancementPrompt = `Enhance this creative prompt to make it more vivid, specific, and inspiring for lyric writing. Keep the core idea but add emotional depth, concrete imagery, and creative direction that will help generate better lyrics:
 
-"${state.userInput}"
+"${snapshot.userInput}"
 
 Return only the enhanced version, no explanations.`;
 
-      const result = await callOpenRouter(enhancementPrompt, '', state.settings.selectedModel);
+      const result = await callOpenRouter(enhancementPrompt, '', snapshot.settings.selectedModel);
       
       dispatch({ type: 'SET_USER_INPUT', payload: result });
       

@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => ({
       useWebManifest: true,
       includeAssets: ['icon-192.png', 'icon-512.png', 'screenshot.png'],
       workbox: {
+        navigateFallback: '/offline.html',
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             // Cache same-origin navigations for offline support
@@ -42,6 +44,16 @@ export default defineConfig(({ mode }) => ({
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'assets',
+            }
+          },
+          {
+            // Keep OpenRouter model list readable offline after a successful fetch
+            urlPattern: /^https:\/\/openrouter\.ai\/api\/v1\/models/,
+            handler: 'StaleWhileRevalidate',
+            method: 'GET',
+            options: {
+              cacheName: 'model-manifest',
+              expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 6 }
             }
           }
         ]

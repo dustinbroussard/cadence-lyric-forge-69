@@ -27,6 +27,8 @@ export function ModelDropdown({ value = '', onChange, className = '' }: ModelDro
   useEffect(() => {
     const CACHE_KEY = 'openrouter_models_cache_v1';
     const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+    let isMounted = true;
+    const controller = new AbortController();
 
     // Hydrate from cache immediately for faster UX/offline
     let hydratedFromCache = false;
@@ -35,8 +37,10 @@ export function ModelDropdown({ value = '', onChange, className = '' }: ModelDro
       if (cachedRaw) {
         const cached = JSON.parse(cachedRaw) as { ts: number; data: Model[] };
         if (Array.isArray(cached.data)) {
-          setModels(cached.data);
-          setLoading(false);
+          if (isMounted) {
+            setModels(cached.data);
+            setLoading(false);
+          }
           hydratedFromCache = true;
         }
       }
@@ -47,10 +51,11 @@ export function ModelDropdown({ value = '', onChange, className = '' }: ModelDro
     async function fetchModels() {
       try {
         setLoading(!hydratedFromCache);
-        const res = await fetch("https://openrouter.ai/api/v1/models");
+        const res = await fetch("https://openrouter.ai/api/v1/models", { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch models`);
         const json = await res.json();
         const list: Model[] = json.data || [];
+        if (!isMounted) return;
         setModels(list);
         try {
           localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: list }));
@@ -60,10 +65,11 @@ export function ModelDropdown({ value = '', onChange, className = '' }: ModelDro
       } catch (err) {
         // If cache exists, keep UI usable; otherwise surface the error
         if (!hydratedFromCache) {
+          if (!isMounted) return;
           setError(err instanceof Error ? err.message : 'Failed to fetch models');
         }
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
     // Only refetch if cache is stale or empty
@@ -80,6 +86,11 @@ export function ModelDropdown({ value = '', onChange, className = '' }: ModelDro
       }
     }
     if (shouldFetch) fetchModels();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
 
   // Close on Escape
